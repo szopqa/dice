@@ -35,7 +35,7 @@
         <div class="die" id="die-1" role="img" aria-label="Die"></div>
       </div>
       <p class="sum" id="sum" aria-hidden="true"></p>
-      <p class="rolled" id="rolled"></p>
+      <p class="rolled" id="rolled" aria-live="polite"></p>
       <p class="comment" id="comment" aria-live="polite"></p>
 
       <div class="controls">
@@ -43,7 +43,7 @@
         <div class="row row--4">
           <button class="btn btn--small" type="button" id="prev" aria-label="Previous player">◀</button>
           <button class="btn btn--small" type="button" id="reroll">Re-roll</button>
-          <button class="btn btn--small" type="button" id="undo">Undo</button>
+          <button class="btn btn--small" type="button" id="undo" aria-label="Undo last roll">Undo</button>
           <button class="btn btn--small" type="button" id="next" aria-label="Next player">▶</button>
         </div>
         <div class="row">

@@ -82,7 +82,7 @@ export function deserialize(text) {
     if (!g || typeof g !== "object" || g.version !== VERSION) return null;
     const { players, turn, rolls } = g;
     if (!Array.isArray(players) || players.length < MIN_PLAYERS || players.length > MAX_PLAYERS) return null;
-    if (!players.every((p) => typeof p === "string")) return null;
+    if (!validateNames(players).ok) return null;
     if (!Number.isInteger(turn) || turn < 0 || turn >= players.length) return null;
     if (!Array.isArray(rolls)) return null;
     for (const r of rolls) {

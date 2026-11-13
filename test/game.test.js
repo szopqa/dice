@@ -100,6 +100,9 @@ test("AC-9: serialize/deserialize round-trips and rejects malformed data", () =>
   assert.equal(bad({ version: 2 }), null);
   assert.equal(bad({ players: ["A"] }), null);
   assert.equal(bad({ players: ["a", "b", "c", "d", "e", "f", "g"] }), null);
+  assert.equal(bad({ players: ["A", ""], rolls: [] }), null);
+  assert.equal(bad({ players: ["A", "  "], rolls: [] }), null);
+  assert.equal(bad({ players: ["A", "a"], rolls: [] }), null);
   assert.equal(bad({ turn: 3 }), null);
   assert.equal(bad({ turn: -1 }), null);
   assert.equal(bad({ rolls: [{ dice: [0, 3], sum: 3, player: 0 }] }), null);

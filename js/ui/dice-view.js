@@ -20,6 +20,7 @@ export function drawFace(dieEl, value) {
   });
   dieEl.replaceChildren(...pips);
   dieEl.dataset.face = String(value);
+  dieEl.setAttribute("aria-label", `Die showing ${value}`);
 }
 
 export const randomFace = () => 1 + Math.floor(Math.random() * 6);

@@ -19,7 +19,7 @@ specs/              feature specs
 
 ## Usage
 
-Enter 2-6 player names (reorder with the arrows), press Start game, then ROLL (or Space/Enter). Re-roll replaces the last roll, the triangles change whose turn it is, Undo removes the last roll, and Sound toggles silent mode. State is saved in localStorage (`catan-dice:game`, `catan-dice:silent`, `catan-dice:names`).
+Enter 2-6 player names (reorder with the arrows), press Start game, then ROLL (or press the Space or Enter key to roll from the keyboard). Re-roll replaces the last roll, the triangles change whose turn it is, Undo removes the last roll, and Sound toggles silent mode. State is saved in localStorage (`catan-dice:game`, `catan-dice:silent`, `catan-dice:names`).
 
 ## Test and lint
 

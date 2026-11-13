@@ -134,7 +134,7 @@ body {
 .name-row { display: flex; gap: 6px; }
 .row { display: flex; gap: 8px; margin-top: 10px; }
 .row .btn { flex: 1; }
-.row--4 .btn { flex: 1 1 0; }
+.row--4 .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; font-size: clamp(0.65rem, 3.4vw, 0.85rem); letter-spacing: clamp(0px, 0.4vw, 0.06em); padding: 0 4px; }
 .error { min-height: 1.4em; margin: 8px 0 0; color: #ff8a73; text-shadow: 1px 1px 0 var(--outline); }
 
 /* ---------- game ---------- */
