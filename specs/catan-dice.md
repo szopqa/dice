@@ -84,7 +84,7 @@ Replace the generic dice roller with a single-purpose site for playing Catan at 
 
 Seven always produces the big effect through the `effect` = max-level rule, even when combo or combo-breaker takes the main banner.
 
-**Persistence**: the `localStorage` keys are `catan-dice:game` (the `serialize` output) and `catan-dice:silent` (`"1"`/`"0"`). Save after every state change (roll, re-roll, undo, turn shift, start). On confirm, New game removes `catan-dice:game` but keeps the names in memory to pre-fill setup. Pre-fill after a reload falls back to a separate `catan-dice:last-names` key, which is written at game start.
+**Persistence**: the `localStorage` keys are `catan-dice:game` (the `serialize` output) and `catan-dice:silent` (`"1"`/`"0"`). Save after every state change (roll, re-roll, undo, turn shift, start). On confirm, New game removes `catan-dice:game` but keeps the names in memory to pre-fill setup. Pre-fill after a reload falls back to a separate `catan-dice:names` key, which is written at game start.
 
 **Edge cases**
 - Double-tapping Roll must not produce two rolls. Buttons are disabled during the animation.
