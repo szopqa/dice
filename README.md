@@ -22,4 +22,8 @@ python3 -m http.server 8000
 
 ## Deploy
 
-Upload the folder as-is to any static host (GitHub Pages, Netlify, Cloudflare Pages, S3…).
+The site is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` (or manually via "Run workflow"). The workflow runs `npm test` first, then publishes the repo root.
+
+One-time setup: in the repository go to Settings → Pages → Source and choose **GitHub Actions**.
+
+The site is then served at https://szopqa.github.io/dice/
