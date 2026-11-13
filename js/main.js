@@ -7,6 +7,7 @@ import {
 import { evaluateEvents } from "./events.js";
 import { createSound } from "./sound.js";
 import * as store from "./ui/storage.js";
+import { nextPlayerIndex } from "./ui/turn.js";
 import { drawFace, randomFace } from "./ui/dice-view.js";
 
 const TUMBLE_MS = 1000;
@@ -18,7 +19,7 @@ const $ = (id) => document.getElementById(id);
 const el = {
   setup: $("setup-screen"), game: $("game-screen"),
   names: $("names"), error: $("setup-error"), add: $("add-player"), form: $("setup-form"),
-  turn: $("turn"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
+  turn: $("turn"), nextUp: $("next-up"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
   newGame: $("new-game"), silent: $("silent"),
@@ -132,8 +133,12 @@ function setDice(values) {
 }
 
 function renderTurn() {
-  const name = game.players[game.turn];
-  el.turn.textContent = game.rolls.length ? `Next: ${name}` : `${name}'s turn`;
+  const text = `${game.players[game.turn]}'s turn`;
+  if (el.turn.textContent !== text) {
+    el.turn.textContent = text;
+    if (!reducedMotion.matches) restart(el.turn, "turn--change");
+  }
+  el.nextUp.textContent = `Next: ${game.players[nextPlayerIndex(game.turn, game.players.length)]}`;
 }
 
 function renderLastRoll() {

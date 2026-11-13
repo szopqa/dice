@@ -30,16 +30,17 @@
     <section class="screen" id="game-screen" hidden>
       <h1 class="title title--small">Catan Dice</h1>
       <p class="turn" id="turn"></p>
+      <p class="next" id="next-up"></p>
       <div class="dice" id="dice">
         <div class="die" id="die-0" role="img" aria-label="Die"></div>
         <div class="die" id="die-1" role="img" aria-label="Die"></div>
       </div>
+      <button class="btn btn--roll" type="button" id="roll">ROLL</button>
       <p class="sum" id="sum" aria-hidden="true"></p>
       <p class="rolled" id="rolled" aria-live="polite"></p>
       <p class="comment" id="comment" aria-live="polite"></p>
 
       <div class="controls">
-        <button class="btn btn--roll" type="button" id="roll">ROLL</button>
         <div class="row row--4">
           <button class="btn btn--small" type="button" id="prev" aria-label="Previous player">◀</button>
           <button class="btn btn--small" type="button" id="reroll">Re-roll</button>
