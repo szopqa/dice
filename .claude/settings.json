@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(npm test:*)", "Bash(npm run:*)", "Bash(npm install:*)", "Bash(npx:*)", "Bash(node:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)",
+      "Bash(git commit:*)", "Bash(git push -u origin:*)", "Bash(git push:*)", "Bash(git branch:*)",
+      "Bash(git rev-parse:*)", "Bash(git show:*)",
+      "Bash(gh pr create:*)", "Bash(gh pr view:*)", "Bash(gh pr diff:*)",
+      "Bash(gh pr review:*)", "Bash(gh pr comment:*)",
+      "Bash(ls:*)", "Bash(cat:*)", "Bash(mkdir:*)", "Bash(curl http://localhost:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git reset --hard:*)",
+      "Bash(gh pr merge:*)", "Bash(gh repo delete:*)",
+      "Read(./.env)", "Read(./.env.*)"
+    ]
+  }
+}

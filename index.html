@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Roll dice online — d4, d6, d8, d10, d12, d20 and d100.">
+  <title>Dice Roller</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <main class="app">
+    <h1 class="app__title">Dice Roller</h1>
+
+    <form class="controls" id="roll-form">
+      <label class="field">
+        <span class="field__label">Dice</span>
+        <input class="field__input" id="count" name="count" type="number" min="1" max="20" value="1" required>
+      </label>
+
+      <label class="field">
+        <span class="field__label">Type</span>
+        <select class="field__input" id="sides" name="sides">
+          <option value="4">d4</option>
+          <option value="6" selected>d6</option>
+          <option value="8">d8</option>
+          <option value="10">d10</option>
+          <option value="12">d12</option>
+          <option value="20">d20</option>
+          <option value="100">d100</option>
+        </select>
+      </label>
+
+      <button class="button" type="submit">Roll</button>
+    </form>
+
+    <section class="result" aria-live="polite">
+      <ul class="result__dice" id="dice"></ul>
+      <p class="result__total" id="total" hidden></p>
+    </section>
+  </main>
+</body>
+</html>
