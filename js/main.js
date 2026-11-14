@@ -25,7 +25,7 @@ const el = {
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
   newGame: $("new-game"), silent: $("silent"), haptics: $("haptics"), shake: $("shake"),
-  hint: $("hint"), hapticLabel: $("haptic-label"),
+  hint: $("settings-hint"), hapticLabel: $("haptic-label"),
 };
 
 const sound = createSound({ isSilent: store.loadSilent() });
@@ -34,7 +34,12 @@ const sound = createSound({ isSilent: store.loadSilent() });
 let inGesture = false;
 const haptics = createHaptics({
   enabled: store.loadHaptics(),
-  switchTick: () => { if (inGesture) el.hapticLabel.click(); },
+  switchTick: () => {
+    if (!inGesture) return;
+    const prev = document.activeElement;
+    el.hapticLabel.click();
+    if (prev && prev !== document.body && typeof prev.focus === "function") prev.focus({ preventScroll: true });
+  },
 });
 const motionEnv = () => ({
   DeviceMotionEvent: globalThis.DeviceMotionEvent,
@@ -198,7 +203,7 @@ function renderToggles() {
 function showHint(text, sticky = false) {
   clearTimeout(hintTimer);
   el.hint.textContent = text;
-  if (text && !sticky) hintTimer = setTimeout(() => { el.hint.textContent = ""; }, 5000);
+  if (text && !sticky) hintTimer = setTimeout(() => { el.hint.textContent = ""; }, 4000);
 }
 
 /** Full, animation-free render (start, reload, undo, shift). */
@@ -322,6 +327,7 @@ function newGame() {
 }
 
 function toggleSilent() {
+  showHint("");
   sound.setSilent(!sound.isSilent());
   store.saveSilent(sound.isSilent());
   if (!sound.isSilent()) sound.unlock();
@@ -329,6 +335,7 @@ function toggleSilent() {
 }
 
 function toggleHaptics() {
+  showHint("");
   haptics.setEnabled(!haptics.isEnabled());
   store.saveHaptics(haptics.isEnabled());
   renderToggles();

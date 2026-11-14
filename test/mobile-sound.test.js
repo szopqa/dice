@@ -71,13 +71,15 @@ describe("mobile-sound-haptics-shake", () => {
   it("AC-2: silent unlock touches nothing", () => {
     const { AC, log } = makeAC();
     let audios = 0;
-    const nav = { get audioSession() { throw new Error("touched"); } };
+    let touched = 0;
+    const nav = { get audioSession() { touched++; return { type: "auto" }; } };
     const s = createSound({
       isSilent: true, AudioContext: AC, Audio: class { constructor() { audios++; } }, navigator: nav,
     });
     s.unlock();
     assert.equal(log.ctxs.length, 0);
     assert.equal(audios, 0);
+    assert.equal(touched, 0);
   });
 
   it("AC-3: sets audioSession.type to playback; tolerates missing audioSession", () => {
@@ -144,6 +146,19 @@ describe("mobile-sound-haptics-shake", () => {
     assert.equal(run.log.starts.length, 3);
     s2.playBig();
     assert.ok(run.log.starts.length > 3);
+  });
+
+  it("AC-6: pending sound does not play if setSilent(true) before resume resolves", async () => {
+    let release;
+    const { AC, log } = makeAC({
+      resume: (c) => new Promise((r) => { release = () => { c.state = "running"; r(); }; }),
+    });
+    const s = createSound({ AudioContext: AC, now: () => 0 });
+    s.playRattle();
+    s.setSilent(true);
+    release();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(log.starts.length, 0);
   });
 
   it("AC-7: sound is dropped when resume resolves more than 250 ms late", async () => {
