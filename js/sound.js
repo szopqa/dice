@@ -1,21 +1,57 @@
 // Synthesized retro sounds via Web Audio. No audio files.
 // The AudioContext is created lazily on first non-silent play.
 
-export function createSound({ isSilent = false } = {}) {
+const STALE_MS = 250;
+
+// Tiny silent PCM WAV (8 kHz, mono, 8-bit, 100 samples) as a data: URI.
+// Played once from a gesture so iOS moves the page to the playback channel.
+export function silentWavDataUri() {
+  const n = 100;
+  const bytes = new Uint8Array(44 + n);
+  const dv = new DataView(bytes.buffer);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) bytes[o + i] = t.charCodeAt(i); };
+  str(0, "RIFF"); dv.setUint32(4, 36 + n, true); str(8, "WAVE");
+  str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  str(36, "data"); dv.setUint32(40, n, true);
+  bytes.fill(128, 44); // 8-bit unsigned PCM: 128 is silence
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+export function createSound({
+  isSilent = false,
+  AudioContext: ACDep,
+  Audio: AudioDep,
+  navigator: navDep,
+  now: nowDep,
+} = {}) {
   let silent = !!isSilent;
   let ctx = null;
+  let audioEl = null;
+
+  const getAC = () => ACDep || globalThis.AudioContext || globalThis.webkitAudioContext;
+  const getAudio = () => AudioDep || globalThis.Audio;
+  const getNav = () => (navDep !== undefined ? navDep : globalThis.navigator);
+  const now = () => {
+    if (typeof nowDep === "function") return nowDep();
+    return globalThis.performance && typeof globalThis.performance.now === "function"
+      ? globalThis.performance.now()
+      : Date.now();
+  };
+  const swallow = (p) => {
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  };
 
   function getCtx() {
     if (silent) return null;
     try {
+      if (ctx && ctx.state === "closed") ctx = null;
       if (!ctx) {
-        const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
+        const AC = getAC();
         if (!AC) return null;
         ctx = new AC();
-      }
-      if (ctx.state === "suspended" && typeof ctx.resume === "function") {
-        const p = ctx.resume();
-        if (p && typeof p.catch === "function") p.catch(() => {});
       }
       return ctx;
     } catch {
@@ -52,12 +88,80 @@ export function createSound({ isSilent = false } = {}) {
   }
 
   function run(fn) {
-    const c = getCtx();
-    if (!c) return;
     try {
-      fn(c, c.currentTime);
+      const c = getCtx();
+      if (!c) return;
+      if (c.state === "running") {
+        fn(c, c.currentTime);
+        return;
+      }
+      const t0 = now();
+      const p = typeof c.resume === "function" ? c.resume() : null;
+      if (p && typeof p.then === "function") {
+        p.then(
+          () => {
+            try {
+              if (silent || now() - t0 > STALE_MS) return;
+              fn(c, c.currentTime);
+            } catch {
+              // sound must never break the game
+            }
+          },
+          () => {},
+        );
+      } else {
+        fn(c, c.currentTime);
+      }
     } catch {
       // sound must never break the game
+    }
+  }
+
+  function unlock() {
+    if (silent) return;
+    try {
+      const nav = getNav();
+      if (nav && "audioSession" in nav && nav.audioSession) nav.audioSession.type = "playback";
+    } catch {
+      // ignore
+    }
+    try {
+      const c = getCtx();
+      if (c) {
+        if (c.state !== "running" && typeof c.resume === "function") swallow(c.resume());
+        const buf = c.createBuffer(1, 1, c.sampleRate || 22050);
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        src.connect(c.destination);
+        src.start(0);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      if (!audioEl) {
+        const A = getAudio();
+        if (A) {
+          audioEl = new A();
+          audioEl.src = silentWavDataUri();
+          swallow(audioEl.play());
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function resumeIfNeeded() {
+    if (silent || !ctx) return;
+    try {
+      if (ctx.state === "closed") {
+        ctx = null;
+      } else if (ctx.state !== "running" && typeof ctx.resume === "function") {
+        swallow(ctx.resume());
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -68,6 +172,8 @@ export function createSound({ isSilent = false } = {}) {
     isSilent() {
       return silent;
     },
+    unlock,
+    resumeIfNeeded,
     playRattle() {
       run((c, t) => {
         for (let i = 0; i < 7; i++) noise(c, t + i * 0.07 + Math.random() * 0.02, 0.05, 0.1);
