@@ -6,6 +6,10 @@
 
 export const TIMER_DEFAULTS = { durationMs: 60000, warnMs: 10000 };
 
+// Selectable durations in ms, in cycle order: positive whole seconds. Off (0) is implicit:
+// it comes before the first entry and after the last, and is never listed.
+export const TIMER_STEPS = Object.freeze([60000, 120000, 180000]);
+
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 
 export function createTimer(opts) {
@@ -61,10 +65,30 @@ export function tickTimer(t, now) {
   return { state: { ...t, nagged: true }, nag: true };
 }
 
-/** The single reset rule: running with full duration if enabled and a roll exists, else idle. */
-export function resetForTurn(t, { enabled, rollCount } = {}, now) {
-  if (enabled === true && rollCount >= 1) return startTurn(t, now);
+/** The single reset rule: running with the full duration if one is selected and a roll exists, else idle. */
+export function resetForTurn(t, { durationMs, rollCount } = {}, now) {
+  if (isNum(durationMs) && durationMs > 0 && rollCount >= 1) {
+    if (!isNum(now)) return t;
+    return startTurn({ ...t, durationMs }, now);
+  }
   return stopTimer(t);
+}
+
+/** Next duration in the cycle: 0 -> steps[0] -> ... -> last -> 0. Unknown values give 0 (off). */
+export function nextStep(currentMs, steps = TIMER_STEPS) {
+  if (currentMs === 0) return steps.length ? steps[0] : 0;
+  const i = steps.indexOf(currentMs);
+  if (i < 0 || i + 1 >= steps.length) return 0;
+  return steps[i + 1];
+}
+
+/** Button label for a selected duration: { text, aria }. */
+export function timerLabel(ms) {
+  if (!isNum(ms) || ms <= 0) return { text: "⏱️ Off", aria: "Turn timer: off" };
+  const sec = Math.round(ms / 1000);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  if (sec % 60 === 0) return { text: `⏱️ ${sec / 60} min`, aria: `Turn timer: ${plural(sec / 60, "minute")}` };
+  return { text: `⏱️ ${sec} s`, aria: `Turn timer: ${plural(sec, "second")}` };
 }
 
 export function formatRemaining(ms) {

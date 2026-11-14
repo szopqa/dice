@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   TIMER_DEFAULTS, createTimer, startTurn, stopTimer, pauseTimer, resumeTimer,
   remainingMs, timerPhase, tickTimer, resetForTurn, formatRemaining, nagText,
+  TIMER_STEPS, nextStep, timerLabel,
 } from "../js/timer.js";
 
 describe("turn-timer", () => {
@@ -82,14 +83,19 @@ describe("turn-timer", () => {
     assert.equal(pauseTimer(paused, 20), paused);
   });
 
-  it("AC-5: resetForTurn runs only when enabled and rollCount >= 1", () => {
+  it("AC-5: resetForTurn runs only when a duration is selected and rollCount >= 1", () => {
     let t = createTimer();
     t = tickTimer(startTurn(t, 0), 70000).state; // nagged
-    const a = resetForTurn(t, { enabled: true, rollCount: 1 }, 100000);
+    const a = resetForTurn(t, { durationMs: 60000, rollCount: 1 }, 100000);
     assert.equal(a.status, "running");
     assert.equal(a.nagged, false);
     assert.equal(remainingMs(a, 100000), 60000);
-    for (const arg of [{ enabled: false, rollCount: 3 }, { enabled: true, rollCount: 0 }, { enabled: undefined, rollCount: 2 }]) {
+    const bads = [
+      { durationMs: 0, rollCount: 3 }, { durationMs: null, rollCount: 3 }, { durationMs: NaN, rollCount: 3 },
+      { durationMs: -1, rollCount: 3 }, { durationMs: "60000", rollCount: 3 }, { durationMs: 60000, rollCount: 0 },
+      { durationMs: undefined, rollCount: 2 },
+    ];
+    for (const arg of bads) {
       const b = resetForTurn(startTurn(createTimer(), 0), arg, 100000);
       assert.equal(b.status, "idle");
       assert.equal(remainingMs(b, 100000), null);
@@ -98,7 +104,7 @@ describe("turn-timer", () => {
 
   it("AC-5: resets a paused timer to a fresh running turn", () => {
     const paused = pauseTimer(startTurn(createTimer(), 0), 30000);
-    const r = resetForTurn(paused, { enabled: true, rollCount: 1 }, 40000);
+    const r = resetForTurn(paused, { durationMs: 60000, rollCount: 1 }, 40000);
     assert.equal(r.status, "running");
     assert.equal(remainingMs(r, 40000), 60000);
   });
@@ -131,7 +137,9 @@ describe("turn-timer", () => {
       assert.equal(r.state, t);
       assert.doesNotThrow(() => remainingMs(t, bad));
       assert.doesNotThrow(() => timerPhase(t, bad));
-      assert.doesNotThrow(() => resetForTurn(t, { enabled: true, rollCount: 1 }, bad));
+      assert.doesNotThrow(() => resetForTurn(t, { durationMs: 60000, rollCount: 1 }, bad));
+      assert.equal(resetForTurn(t, { durationMs: 120000, rollCount: 1 }, bad), t);
+      assert.equal(resetForTurn(t, { durationMs: 0, rollCount: 1 }, bad).status, "idle");
     }
   });
 
@@ -143,5 +151,74 @@ describe("turn-timer", () => {
     assert.equal(remainingMs(pauseTimer(t, 1000), 1000), 60000);
     assert.doesNotThrow(() => createTimer(null));
     assert.equal(createTimer(null).durationMs, 60000);
+  });
+
+  it("AC-2: phase boundaries hold for 120 s and 180 s", () => {
+    for (const d of [120000, 180000]) {
+      const t = startTurn(createTimer({ durationMs: d }), 0);
+      assert.equal(timerPhase(t, d - 10001), "running");
+      assert.equal(timerPhase(t, d - 10000), "warning");
+      assert.equal(timerPhase(t, d), "expired");
+      assert.equal(timerPhase(t, 0), "running");
+    }
+  });
+
+  it("AC-21: warning is the final 10 s for every duration; a 5 s step starts in warning", () => {
+    for (const d of TIMER_STEPS) {
+      const t = resetForTurn(createTimer(), { durationMs: d, rollCount: 1 }, 0);
+      assert.equal(t.warnMs, 10000);
+      assert.equal(timerPhase(t, d - 10001), "running");
+      assert.equal(timerPhase(t, d - 10000), "warning");
+    }
+    const t = resetForTurn(createTimer(), { durationMs: 5000, rollCount: 1 }, 0);
+    assert.equal(timerPhase(t, 0), "warning");
+  });
+
+  it("AC-6: formatRemaining handles 2 and 3 minutes", () => {
+    assert.equal(formatRemaining(120000), "2:00");
+    assert.equal(formatRemaining(180000), "3:00");
+  });
+
+  it("AC-17: default cycle off -> 60 -> 120 -> 180 -> off", () => {
+    assert.deepEqual([...TIMER_STEPS], [60000, 120000, 180000]);
+    assert.ok(Object.isFrozen(TIMER_STEPS));
+    assert.equal(nextStep(0), 60000);
+    assert.equal(nextStep(60000), 120000);
+    assert.equal(nextStep(120000), 180000);
+    assert.equal(nextStep(180000), 0);
+  });
+
+  it("AC-18: custom list order and wrap; unknown/null/NaN/negative/legacy current -> off; empty list -> off", () => {
+    const steps = [30000, 45000];
+    assert.equal(nextStep(0, steps), 30000);
+    assert.equal(nextStep(30000, steps), 45000);
+    assert.equal(nextStep(45000, steps), 0);
+    for (const bad of [90000, null, undefined, NaN, -60000, 1, "60000"]) assert.equal(nextStep(bad), 0);
+    assert.equal(nextStep(0, []), 0);
+    assert.equal(nextStep(60000, []), 0);
+  });
+
+  it("AC-19: timerLabel text and aria for off, 1/2/3 min, and a non-minute step", () => {
+    assert.deepEqual(timerLabel(0), { text: "⏱️ Off", aria: "Turn timer: off" });
+    assert.deepEqual(timerLabel(null), { text: "⏱️ Off", aria: "Turn timer: off" });
+    assert.deepEqual(timerLabel(60000), { text: "⏱️ 1 min", aria: "Turn timer: 1 minute" });
+    assert.deepEqual(timerLabel(120000), { text: "⏱️ 2 min", aria: "Turn timer: 2 minutes" });
+    assert.deepEqual(timerLabel(180000), { text: "⏱️ 3 min", aria: "Turn timer: 3 minutes" });
+    assert.deepEqual(timerLabel(90000), { text: "⏱️ 90 s", aria: "Turn timer: 90 seconds" });
+    assert.deepEqual(timerLabel(1000), { text: "⏱️ 1 s", aria: "Turn timer: 1 second" });
+  });
+
+  it("AC-20: resetForTurn with a new duration restarts a running/expired+nagged timer at full new duration", () => {
+    const running = startTurn(createTimer(), 0);
+    const a = resetForTurn(running, { durationMs: 120000, rollCount: 1 }, 37000);
+    assert.equal(a.durationMs, 120000);
+    assert.equal(remainingMs(a, 37000), 120000);
+    const nagged = tickTimer(running, 70000).state;
+    assert.equal(nagged.nagged, true);
+    const b = resetForTurn(nagged, { durationMs: 180000, rollCount: 2 }, 80000);
+    assert.equal(b.nagged, false);
+    assert.equal(b.status, "running");
+    assert.equal(remainingMs(b, 80000), 180000);
+    assert.equal(tickTimer(b, 80000 + 180000).nag, true);
   });
 });

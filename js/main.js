@@ -9,7 +9,7 @@ import { createSound } from "./sound.js";
 import { createHaptics } from "./haptics.js";
 import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
 import {
-  createTimer, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
+  TIMER_DEFAULTS, createTimer, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
   remainingMs, timerPhase, formatRemaining, nagText,
 } from "./timer.js";
 import * as store from "./ui/storage.js";
@@ -258,7 +258,7 @@ function stopTurnTimer() {
 function resetTurnTimer() {
   if (animating || !game) { stopTurnTimer(); return; }
   const now = performance.now();
-  timer = resetForTurn(timer, { enabled: timerOn, rollCount: game.rolls.length }, now);
+  timer = resetForTurn(timer, { durationMs: timerOn ? TIMER_DEFAULTS.durationMs : 0, rollCount: game.rolls.length }, now);
   if (document.visibilityState === "hidden") timer = pauseTimer(timer, now);
   syncTimer();
   renderTimer();
