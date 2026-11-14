@@ -8,7 +8,8 @@ export const TIMER_DEFAULTS = { durationMs: 60000, warnMs: 10000 };
 
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 
-export function createTimer({ durationMs, warnMs } = TIMER_DEFAULTS) {
+export function createTimer(opts) {
+  const { durationMs, warnMs } = opts ?? {};
   return {
     status: "idle",
     durationMs: durationMs ?? TIMER_DEFAULTS.durationMs,

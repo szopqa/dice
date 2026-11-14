@@ -96,6 +96,13 @@ describe("turn-timer", () => {
     }
   });
 
+  it("AC-5: resets a paused timer to a fresh running turn", () => {
+    const paused = pauseTimer(startTurn(createTimer(), 0), 30000);
+    const r = resetForTurn(paused, { enabled: true, rollCount: 1 }, 40000);
+    assert.equal(r.status, "running");
+    assert.equal(remainingMs(r, 40000), 60000);
+  });
+
   it("AC-6: formatRemaining rounds seconds up", () => {
     assert.equal(formatRemaining(60000), "1:00");
     assert.equal(formatRemaining(59001), "1:00");
@@ -134,5 +141,7 @@ describe("turn-timer", () => {
     assert.equal(timerPhase(t, 1000), "running");
     assert.equal(tickTimer(t, 1000).nag, false);
     assert.equal(remainingMs(pauseTimer(t, 1000), 1000), 60000);
+    assert.doesNotThrow(() => createTimer(null));
+    assert.equal(createTimer(null).durationMs, 60000);
   });
 });

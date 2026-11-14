@@ -551,6 +551,9 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { sound.resumeIfNeeded(); resumeTurnTimer(); }
   else if (document.visibilityState === "hidden") { sound.markStale(); pauseTurnTimer(); }
 });
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && document.visibilityState === "visible") { sound.resumeIfNeeded(); resumeTurnTimer(); }
+});
 window.addEventListener("pagehide", () => { sound.markStale(); pauseTurnTimer(); });
 initShake();
 document.addEventListener("keydown", onKey);
