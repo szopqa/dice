@@ -107,3 +107,18 @@ Feedback from testing on a real iPhone. Where this section conflicts with anythi
 - AC-30: **iOS Shake to Undo.** On iOS, typing player names on the setup screen leaves an "Undo Typing" entry in Safari's undo history, so shaking the phone opens the system "Undo Typing" dialog instead of rolling. Web pages can't turn Shake to Undo off, so the app must leave no undo history behind. Given setup is valid, when "Start game" is tapped, the game is saved (as today), focus is blurred, and the page reloads (`location.reload()`). The game screen comes back through the existing restore path (catan-dice AC-27): no animation, no shout. The setup screen is the only place with text inputs, so the game screen never has typing history. The name pre-fill still works (`catan-dice:names`). Shake permission and audio unlock after the reload follow the existing first-gesture paths (AC-22, AC-29).
 - AC-31: **Sound after lock/unlock.** iOS can leave the AudioContext "running" but silent after the phone is locked and unlocked or the app is backgrounded. The media-channel `<audio>` session can also be lost, which brings the mute switch back. Given the document becomes hidden (`visibilitychange` → hidden, or `pagehide`), the sound module is marked stale: `markStale()` makes `needsUnlock()` true and clears the silent clip's played flag. On the next `unlock()` while stale, the module closes the old context (`close()`, errors swallowed), creates a new AudioContext, plays the 1-sample buffer, sets `audioSession.type = "playback"` again, and replays the silent clip. `resumeIfNeeded()` on becoming visible stays as it is. Node-testable: after `markStale()`, `unlock()` creates a second context, calls `close()` on the first, and plays the clip again. When silent, `markStale()` + `unlock()` creates nothing.
 - AC-32 (manual, iPhone): Given Sound on and a game in progress, when the phone is locked, unlocked, and the next roll is tapped, then the rattle and the result sounds play, including with the mute switch on.
+
+## Amendment 2 (2026-11-14, haptics timing)
+Where this section conflicts with anything above, it wins.
+
+- AC-33: **Haptics fire when the dice land, not on press.** Remove the roll-start tick. `js/haptics.js` gains `land(effect)`, where `effect` is one of `"none" | "comment" | "shout" | "big"`.
+  - When `navigator.vibrate` exists, it vibrates once with `HAPTIC_PATTERNS.big` for `"big"`, `.shout` for `"shout"`, and `.tick` otherwise.
+  - When `vibrate` is missing, it calls `switchTick()` once (whatever the effect).
+  - When disabled, it does nothing, and it never throws.
+  - `tick()`/`shout()`/`big()` stay as they are.
+  - Node-testable.
+- AC-34 (wiring): at reveal (end of tumble, or immediately under reduced motion), `main.js` calls `haptics.land(events.effect)` exactly once per roll, re-roll and shake roll. Nothing vibrates at roll start.
+  - The iOS `switchTick` passed to `createHaptics` no longer requires being inside the gesture handler. It fires when the current roll was started by a tap or key (a `rollFromGesture` flag set in the gesture path), and is skipped for shake-triggered rolls.
+  - This is an experiment: WebKit may not honour a programmatic switch toggle ~1 s after the tap.
+  - Focus restore/blur as in AC-26 still applies.
+- AC-35 (manual): on Android, a landing vibration is felt on tap and shake rolls, with stronger patterns on shout/big. On iPhone iOS 18+, check whether a tick is felt when tapped dice land. If not, the fallback (decided with the user) is to restore the tick on tap for iPhone only.
