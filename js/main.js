@@ -6,6 +6,8 @@ import {
 } from "./game.js";
 import { evaluateEvents } from "./events.js";
 import { createSound } from "./sound.js";
+import { createHaptics } from "./haptics.js";
+import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
 import * as store from "./ui/storage.js";
 import { nextPlayerIndex } from "./ui/turn.js";
 import { drawFace, randomFace } from "./ui/dice-view.js";
@@ -22,10 +24,27 @@ const el = {
   turn: $("turn"), nextUp: $("next-up"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
-  newGame: $("new-game"), silent: $("silent"),
+  newGame: $("new-game"), silent: $("silent"), haptics: $("haptics"), shake: $("shake"),
+  hint: $("hint"), hapticLabel: $("haptic-label"),
 };
 
 const sound = createSound({ isSilent: store.loadSilent() });
+
+// iOS 18+ fallback: clicking a hidden switch's label inside a gesture gives a system haptic.
+let inGesture = false;
+const haptics = createHaptics({
+  enabled: store.loadHaptics(),
+  switchTick: () => { if (inGesture) el.hapticLabel.click(); },
+});
+const motionEnv = () => ({
+  DeviceMotionEvent: globalThis.DeviceMotionEvent,
+  isSecureContext: globalThis.isSecureContext,
+});
+const shakeDetector = createShakeDetector();
+let shakeOn = false;
+let shakeListening = false;
+let shakePending = false; // saved on, but iOS needs a gesture to re-request permission
+let hintTimer = 0;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 let game = null;
@@ -165,9 +184,21 @@ function renderButtons() {
 }
 
 function renderSilent() {
-  const on = sound.isSilent();
+  const on = !sound.isSilent();
   el.silent.setAttribute("aria-pressed", String(on));
-  el.silent.textContent = on ? "🔇 Silent" : "🔊 Sound";
+  el.silent.textContent = on ? "🔊" : "🔇";
+}
+
+function renderToggles() {
+  renderSilent();
+  el.haptics.setAttribute("aria-pressed", String(haptics.isEnabled()));
+  el.shake.setAttribute("aria-pressed", String(shakeOn));
+}
+
+function showHint(text, sticky = false) {
+  clearTimeout(hintTimer);
+  el.hint.textContent = text;
+  if (text && !sticky) hintTimer = setTimeout(() => { el.hint.textContent = ""; }, 5000);
 }
 
 /** Full, animation-free render (start, reload, undo, shift). */
@@ -177,7 +208,7 @@ function renderStatic() {
   renderTurn();
   renderLastRoll();
   renderButtons();
-  renderSilent();
+  renderToggles();
 }
 
 /* ---------- effects ---------- */
@@ -237,7 +268,7 @@ function reveal(events) {
 
 /* ---------- actions ---------- */
 
-function rollWith(apply) {
+function rollWith(apply, viaShake = false) {
   if (animating || !game) return;
   const dice = rollPair();
   game = apply(game, dice);
@@ -248,6 +279,9 @@ function rollWith(apply) {
   el.comment.textContent = "";
   renderButtons();
   sound.playRattle();
+  inGesture = !viaShake; // the iOS switch tick only works inside a real tap
+  haptics.tick();
+  inGesture = false;
   if (reducedMotion.matches) {
     reveal(events);
     playOutcome(events);
@@ -265,12 +299,12 @@ function rollWith(apply) {
 }
 
 function playOutcome({ effect }) {
-  if (effect === "big") sound.playBig();
-  else if (effect === "shout") sound.playShout();
+  if (effect === "big") { sound.playBig(); haptics.big(); }
+  else if (effect === "shout") { sound.playShout(); haptics.shout(); }
 }
 
-const roll = () => rollWith((g, d) => applyRoll(g, d));
-const reroll = () => { if (game.rolls.length) rollWith((g, d) => rerollLast(g, d)); };
+const roll = (viaShake = false) => rollWith((g, d) => applyRoll(g, d), viaShake === true);
+const reroll = () => { if (game?.rolls.length) rollWith((g, d) => rerollLast(g, d)); };
 
 function updateGame(next) {
   if (animating) return;
@@ -290,7 +324,98 @@ function newGame() {
 function toggleSilent() {
   sound.setSilent(!sound.isSilent());
   store.saveSilent(sound.isSilent());
+  if (!sound.isSilent()) sound.unlock();
   renderSilent();
+}
+
+function toggleHaptics() {
+  haptics.setEnabled(!haptics.isEnabled());
+  store.saveHaptics(haptics.isEnabled());
+  renderToggles();
+}
+
+/* ---------- shake ---------- */
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a) return;
+  const hit = shakeDetector.push({ x: a.x, y: a.y, z: a.z, t: performance.now() });
+  if (hit && shouldRollOnShake({ enabled: shakeOn, screen: el.game.hidden ? "setup" : "game", animating })) {
+    roll(true);
+  }
+}
+
+function listenMotion(on) {
+  if (on === shakeListening) return;
+  shakeListening = on;
+  shakeDetector.reset();
+  if (on) window.addEventListener("devicemotion", onMotion);
+  else window.removeEventListener("devicemotion", onMotion);
+}
+
+function setShake(on) {
+  shakeOn = on;
+  shakePending = false;
+  store.saveShake(on);
+  listenMotion(on);
+  renderToggles();
+}
+
+const DENIED_HINT = "Motion access denied. Re-enable it in Safari settings.";
+
+function toggleShake() {
+  if (el.shake.getAttribute("aria-disabled") === "true") {
+    showHint(el.shake.title);
+    return;
+  }
+  if (shakeOn) { setShake(false); showHint(""); return; }
+  const request = requestMotionPermission(motionEnv()); // must start inside the tap
+  if (!sound.isSilent()) sound.unlock();
+  request.then((result) => {
+    if (result === "granted") { setShake(true); showHint(""); }
+    else { setShake(false); showHint(result === "denied" ? DENIED_HINT : el.shake.title); }
+  });
+}
+
+function initShake() {
+  const support = motionSupport(motionEnv());
+  if (support !== "ok") {
+    el.shake.setAttribute("aria-disabled", "true");
+    el.shake.title = support === "insecure"
+      ? "Shake to roll needs HTTPS"
+      : "Shake to roll needs a motion sensor";
+    if (store.loadShake()) store.saveShake(false);
+    return;
+  }
+  el.shake.title = "Shake to roll";
+  if (!store.loadShake()) return;
+  shakeOn = true;
+  if (typeof globalThis.DeviceMotionEvent.requestPermission !== "function") {
+    listenMotion(true);
+    return;
+  }
+  // iOS: permission can only be requested from a user gesture.
+  shakePending = true;
+  const types = ["pointerup", "touchend", "click", "keydown"];
+  const onGesture = () => {
+    types.forEach((t) => document.removeEventListener(t, onGesture, true));
+    if (!shakePending) return;
+    shakePending = false;
+    requestMotionPermission(motionEnv()).then((result) => {
+      if (!shakeOn) return;
+      if (result === "granted") listenMotion(true);
+      else { setShake(false); showHint(DENIED_HINT); }
+    });
+  };
+  types.forEach((t) => document.addEventListener(t, onGesture, true));
+}
+
+/* ---------- audio unlock ---------- */
+
+const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+function onFirstGesture() {
+  // Listeners stay attached: iOS can re-suspend the context after backgrounding.
+  if (!sound.isSilent() && !sound.isRunning()) sound.unlock();
 }
 
 function onKey(event) {
@@ -305,13 +430,20 @@ function onKey(event) {
 
 el.add.addEventListener("click", addPlayer);
 el.form.addEventListener("submit", startGame);
-el.roll.addEventListener("click", roll);
+el.roll.addEventListener("click", () => roll());
 el.reroll.addEventListener("click", reroll);
 el.undo.addEventListener("click", () => updateGame(undoLast(game)));
 el.prev.addEventListener("click", () => updateGame(shiftTurn(game, -1)));
 el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
 el.silent.addEventListener("click", toggleSilent);
+el.haptics.addEventListener("click", toggleHaptics);
+el.shake.addEventListener("click", toggleShake);
+GESTURES.forEach((t) => document.addEventListener(t, onFirstGesture, true));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") sound.resumeIfNeeded();
+});
+initShake();
 document.addEventListener("keydown", onKey);
 
 game = store.loadGame();

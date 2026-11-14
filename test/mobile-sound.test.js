@@ -45,6 +45,16 @@ function decode(uri) {
 }
 
 describe("mobile-sound-haptics-shake", () => {
+  it("AC-22: isRunning is true only when a context exists and is running", () => {
+    const a = makeAC({ state: "suspended" });
+    const snd = createSound({ AudioContext: a.AC, Audio: undefined, navigator: {} });
+    assert.equal(snd.isRunning(), false);
+    snd.unlock();
+    assert.equal(snd.isRunning(), false);
+    a.log.ctxs[0].state = "running";
+    assert.equal(snd.isRunning(), true);
+  });
+
   it("AC-1: unlock creates one context, resumes, plays 1-sample buffer to destination", () => {
     const { AC, log } = makeAC();
     const s = createSound({ AudioContext: AC, Audio: undefined, navigator: {} });

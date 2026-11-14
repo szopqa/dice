@@ -174,6 +174,9 @@ export function createSound({
     },
     unlock,
     resumeIfNeeded,
+    isRunning() {
+      return !!ctx && ctx.state === "running";
+    },
     playRattle() {
       run((c, t) => {
         for (let i = 0; i < 7; i++) noise(c, t + i * 0.07 + Math.random() * 0.02, 0.05, 0.1);
