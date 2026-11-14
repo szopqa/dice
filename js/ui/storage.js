@@ -1,4 +1,5 @@
 // localStorage wrapper: every access is guarded (private mode, quota, corrupt data).
+import { TIMER_STEPS } from "../timer.js";
 import { deserialize, serialize, MIN_PLAYERS, MAX_PLAYERS } from "../game.js";
 
 export const KEYS = {
@@ -47,8 +48,19 @@ export const saveSilent = (silent) => set(KEYS.silent, silent ? "1" : "0");
 export const loadShake = () => get(KEYS.shake) === "1";
 export const saveShake = (v) => set(KEYS.shake, v ? "1" : "0");
 
-export const loadTimer = () => get(KEYS.timer) === "1";
-export const saveTimer = (v) => set(KEYS.timer, v ? "1" : "0");
+/** Stored as whole seconds; legacy "1" (old boolean on) means 60 s. Returns ms, or 0 for off/invalid/unlisted. */
+export function loadTimer(steps = TIMER_STEPS) {
+  const text = get(KEYS.timer);
+  if (text === null || !/^\d+$/.test(text)) return 0;
+  const seconds = text === "1" ? 60 : Number(text);
+  const ms = seconds * 1000;
+  return steps.includes(ms) ? ms : 0;
+}
+
+export function saveTimer(ms) {
+  const ok = typeof ms === "number" && Number.isFinite(ms) && ms > 0;
+  set(KEYS.timer, ok ? String(Math.round(ms / 1000)) : "0");
+}
 
 /** Returns a valid-looking array of saved names, or null. */
 export function loadNames() {

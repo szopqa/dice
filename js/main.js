@@ -9,7 +9,7 @@ import { createSound } from "./sound.js";
 import { createHaptics } from "./haptics.js";
 import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
 import {
-  TIMER_DEFAULTS, createTimer, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
+  createTimer, nextStep, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
   remainingMs, timerPhase, formatRemaining, nagText,
 } from "./timer.js";
 import * as store from "./ui/storage.js";
@@ -67,7 +67,7 @@ let names = store.loadNames() ?? Array(DEFAULT_ROWS).fill("");
 let animating = false;
 let bannerTimer = 0;
 let timer = createTimer();
-let timerOn = store.loadTimer();
+let timerMs = store.loadTimer();
 let timerInterval = 0;
 
 /* ---------- screens ---------- */
@@ -213,7 +213,7 @@ function renderSilent() {
 function renderToggles() {
   renderSilent();
   el.shake.setAttribute("aria-pressed", String(shakeOn));
-  el.timerToggle.setAttribute("aria-pressed", String(timerOn));
+  el.timerToggle.setAttribute("aria-pressed", String(timerMs > 0)); // interim until T7
 }
 
 /* ---------- turn timer (all decisions live in timer.js) ---------- */
@@ -258,7 +258,7 @@ function stopTurnTimer() {
 function resetTurnTimer() {
   if (animating || !game) { stopTurnTimer(); return; }
   const now = performance.now();
-  timer = resetForTurn(timer, { durationMs: timerOn ? TIMER_DEFAULTS.durationMs : 0, rollCount: game.rolls.length }, now);
+  timer = resetForTurn(timer, { durationMs: timerMs, rollCount: game.rolls.length }, now);
   if (document.visibilityState === "hidden") timer = pauseTimer(timer, now);
   syncTimer();
   renderTimer();
@@ -412,9 +412,9 @@ function toggleSilent() {
   renderSilent();
 }
 
-function toggleTimer() {
-  timerOn = !timerOn;
-  store.saveTimer(timerOn);
+function cycleTimer() {
+  timerMs = nextStep(timerMs);
+  store.saveTimer(timerMs);
   resetTurnTimer();
   renderToggles();
 }
@@ -545,7 +545,7 @@ el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
 el.silent.addEventListener("click", toggleSilent);
 el.shake.addEventListener("click", toggleShake);
-el.timerToggle.addEventListener("click", toggleTimer);
+el.timerToggle.addEventListener("click", cycleTimer);
 GESTURES.forEach((t) => document.addEventListener(t, onFirstGesture, true));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { sound.resumeIfNeeded(); resumeTurnTimer(); }
