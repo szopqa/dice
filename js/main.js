@@ -10,7 +10,7 @@ import { createHaptics } from "./haptics.js";
 import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
 import {
   createTimer, nextStep, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
-  remainingMs, timerPhase, formatRemaining, nagText,
+  remainingMs, timerPhase, formatRemaining, nagText, timerLabel,
 } from "./timer.js";
 import * as store from "./ui/storage.js";
 import { nextPlayerIndex } from "./ui/turn.js";
@@ -213,7 +213,9 @@ function renderSilent() {
 function renderToggles() {
   renderSilent();
   el.shake.setAttribute("aria-pressed", String(shakeOn));
-  el.timerToggle.setAttribute("aria-pressed", String(timerMs > 0)); // interim until T7
+  const label = timerLabel(timerMs);
+  el.timerToggle.textContent = label.text;
+  el.timerToggle.setAttribute("aria-label", label.aria);
 }
 
 /* ---------- turn timer (all decisions live in timer.js) ---------- */
