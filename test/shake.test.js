@@ -90,5 +90,6 @@ describe("mobile-sound-haptics-shake", () => {
     assert.equal(await p, "granted");
     assert.equal(await requestMotionPermission(mk(() => Promise.resolve("denied"))), "denied");
     assert.equal(await requestMotionPermission(mk(() => Promise.reject(new Error("no")))), "error");
+    assert.equal(await requestMotionPermission(mk(() => { throw new Error("sync"); })), "error");
   });
 });

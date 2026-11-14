@@ -182,6 +182,11 @@ export function createSound({
     },
     unlock,
     resumeIfNeeded,
+    needsUnlock() {
+      if (silent) return false;
+      if (!ctx || ctx.state !== "running") return true;
+      return !!getAudio() && !audioPlaying;
+    },
     isRunning() {
       return !!ctx && ctx.state === "running";
     },

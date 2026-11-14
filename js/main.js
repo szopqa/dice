@@ -372,6 +372,7 @@ function setShake(on) {
   renderToggles();
 }
 
+let shakeToken = 0;
 const DENIED_HINT = "Motion access denied. Re-enable it in Safari settings.";
 
 function toggleShake() {
@@ -379,15 +380,26 @@ function toggleShake() {
     showHint(el.shake.title);
     return;
   }
+  if (shakeOn) { // on or pending: turning off always works; late results are discarded
+    shakeToken++;
+    shakeRequesting = false;
+    setShake(false);
+    showHint("");
+    return;
+  }
   if (shakeRequesting) return;
-  if (shakeOn) { setShake(false); showHint(""); return; }
   shakeRequesting = true;
+  const token = ++shakeToken;
   const request = requestMotionPermission(motionEnv()); // must start inside the tap
   if (!sound.isSilent()) sound.unlock();
   request.then((result) => {
+    if (token !== shakeToken) return;
     shakeRequesting = false;
     if (result === "granted") { setShake(true); showHint(""); }
-    else { setShake(false); showHint(result === "denied" ? DENIED_HINT : el.shake.title); }
+    else {
+      setShake(false);
+      showHint(result === "denied" ? DENIED_HINT : "Couldn't request motion access \u2014 tap again.");
+    }
   });
 }
 
@@ -412,11 +424,14 @@ function initShake() {
   const types = ["touchend", "click", "keydown"];
   const detach = () => types.forEach((t) => document.removeEventListener(t, onGesture, true));
   const onGesture = (e) => {
+    if (e.target && typeof e.target.closest === "function" && e.target.closest("#shake")) return;
     if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
     if (!shakePending || shakeRequesting) { if (!shakePending) detach(); return; }
     detach();
     shakeRequesting = true;
+    const token = ++shakeToken;
     requestMotionPermission(motionEnv()).then((result) => {
+      if (token !== shakeToken) return;
       shakeRequesting = false;
       if (!shakeOn || !shakePending) return;
       if (result === "granted") { shakePending = false; listenMotion(true); }
@@ -432,7 +447,7 @@ function initShake() {
 const GESTURES = ["pointerup", "touchend", "click", "keydown"];
 function onFirstGesture() {
   // Listeners stay attached: iOS can re-suspend the context after backgrounding.
-  if (!sound.isSilent() && !sound.isRunning()) sound.unlock();
+  if (sound.needsUnlock()) sound.unlock();
 }
 
 function onKey(event) {

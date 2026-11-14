@@ -45,7 +45,7 @@ function decode(uri) {
 }
 
 describe("mobile-sound-haptics-shake", () => {
-  it("AC-22: isRunning is true only when a context exists and is running", () => {
+  it("AC-8: isRunning() reflects context state", () => {
     const a = makeAC({ state: "suspended" });
     const snd = createSound({ AudioContext: a.AC, Audio: undefined, navigator: {} });
     assert.equal(snd.isRunning(), false);
@@ -53,6 +53,26 @@ describe("mobile-sound-haptics-shake", () => {
     assert.equal(snd.isRunning(), false);
     a.log.ctxs[0].state = "running";
     assert.equal(snd.isRunning(), true);
+  });
+
+  it("AC-4: needsUnlock stays true until the silent clip has played successfully", async () => {
+    const a = makeAC({ state: "running" });
+    let reject = true;
+    class FakeAudio {
+      play() { return reject ? Promise.reject(new Error("blocked")) : Promise.resolve(); }
+    }
+    const s = createSound({ AudioContext: a.AC, Audio: FakeAudio, navigator: {} });
+    assert.equal(s.needsUnlock(), true);
+    s.unlock();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(s.isRunning(), true);
+    assert.equal(s.needsUnlock(), true);
+    reject = false;
+    s.unlock();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(s.needsUnlock(), false);
+    s.setSilent(true);
+    assert.equal(s.needsUnlock(), false);
   });
 
   it("AC-1: unlock creates one context, resumes, plays 1-sample buffer to destination", () => {
