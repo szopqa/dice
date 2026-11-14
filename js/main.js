@@ -8,6 +8,10 @@ import { evaluateEvents } from "./events.js";
 import { createSound } from "./sound.js";
 import { createHaptics } from "./haptics.js";
 import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
+import {
+  createTimer, stopTimer, pauseTimer, resumeTimer, tickTimer, resetForTurn,
+  remainingMs, timerPhase, formatRemaining, nagText,
+} from "./timer.js";
 import * as store from "./ui/storage.js";
 import { nextPlayerIndex } from "./ui/turn.js";
 import { drawFace, randomFace } from "./ui/dice-view.js";
@@ -15,6 +19,7 @@ import { drawFace, randomFace } from "./ui/dice-view.js";
 const TUMBLE_MS = 1000;
 const FLICKER_MS = 70;
 const BANNER_MS = 1800;
+const TIMER_TICK_MS = 250;
 const DEFAULT_ROWS = 4;
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +30,7 @@ const el = {
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
   newGame: $("new-game"), silent: $("silent"), shake: $("shake"),
+  timer: $("timer"), timerToggle: $("timer-toggle"),
   hint: $("settings-hint"), hapticLabel: $("haptic-label"),
 };
 
@@ -60,6 +66,9 @@ let game = null;
 let names = store.loadNames() ?? Array(DEFAULT_ROWS).fill("");
 let animating = false;
 let bannerTimer = 0;
+let timer = createTimer();
+let timerOn = store.loadTimer();
+let timerInterval = 0;
 
 /* ---------- screens ---------- */
 
@@ -204,6 +213,66 @@ function renderSilent() {
 function renderToggles() {
   renderSilent();
   el.shake.setAttribute("aria-pressed", String(shakeOn));
+  el.timerToggle.setAttribute("aria-pressed", String(timerOn));
+}
+
+/* ---------- turn timer (all decisions live in timer.js) ---------- */
+
+function renderTimer() {
+  const now = performance.now();
+  const phase = timerPhase(timer, now);
+  el.timer.textContent = phase === "idle" ? "" : formatRemaining(remainingMs(timer, now));
+  el.timer.classList.toggle("timer--idle", phase === "idle");
+  el.timer.classList.toggle("timer--warning", phase === "warning");
+  el.timer.classList.toggle("timer--expired", phase === "expired");
+}
+
+function nag() {
+  showBanner({ text: nagText(game.players[game.turn]) }, false);
+  sound.playShout(); // no-op when silent
+  haptics.shout();
+}
+
+function tick() {
+  const result = tickTimer(timer, performance.now());
+  timer = result.state;
+  renderTimer();
+  if (result.nag && game) nag();
+  syncTimer();
+}
+
+/** One interval, alive only while the timer is running and has not nagged yet. */
+function syncTimer() {
+  const need = timer.status === "running" && !timer.nagged;
+  if (need && !timerInterval) timerInterval = setInterval(tick, TIMER_TICK_MS);
+  else if (!need && timerInterval) { clearInterval(timerInterval); timerInterval = 0; }
+}
+
+function stopTurnTimer() {
+  timer = stopTimer(timer);
+  syncTimer();
+  renderTimer();
+}
+
+/** The single reset rule. Stays stopped while the dice tumble (reveal resets it). */
+function resetTurnTimer() {
+  if (animating || !game) { stopTurnTimer(); return; }
+  const now = performance.now();
+  timer = resetForTurn(timer, { enabled: timerOn, rollCount: game.rolls.length }, now);
+  if (document.visibilityState === "hidden") timer = pauseTimer(timer, now);
+  syncTimer();
+  renderTimer();
+}
+
+function pauseTurnTimer() {
+  timer = pauseTimer(timer, performance.now());
+  syncTimer();
+}
+
+function resumeTurnTimer() {
+  timer = resumeTimer(timer, performance.now());
+  syncTimer();
+  renderTimer();
 }
 
 function showHint(text, sticky = false) {
@@ -276,6 +345,7 @@ function reveal(events) {
   haptics.land(events.effect);
   animating = false;
   renderButtons();
+  resetTurnTimer();
 }
 
 /* ---------- actions ---------- */
@@ -287,6 +357,7 @@ function rollWith(apply, viaShake = false) {
   store.saveGame(game);
   const events = evaluateEvents(game);
   animating = true;
+  stopTurnTimer();
   clearEffects();
   el.comment.textContent = "";
   renderButtons();
@@ -321,12 +392,14 @@ function updateGame(next) {
   game = next;
   store.saveGame(game);
   renderStatic();
+  resetTurnTimer();
 }
 
 function newGame() {
   if (animating || !confirm("Start a new game? The current game will be lost.")) return;
   names = game.players.slice();
   store.clearGame();
+  stopTurnTimer();
   clearEffects();
   showSetup();
 }
@@ -337,6 +410,13 @@ function toggleSilent() {
   store.saveSilent(sound.isSilent());
   if (!sound.isSilent()) sound.unlock();
   renderSilent();
+}
+
+function toggleTimer() {
+  timerOn = !timerOn;
+  store.saveTimer(timerOn);
+  resetTurnTimer();
+  renderToggles();
 }
 
 /* ---------- shake ---------- */
@@ -465,15 +545,16 @@ el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
 el.silent.addEventListener("click", toggleSilent);
 el.shake.addEventListener("click", toggleShake);
+el.timerToggle.addEventListener("click", toggleTimer);
 GESTURES.forEach((t) => document.addEventListener(t, onFirstGesture, true));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") sound.resumeIfNeeded();
-  else if (document.visibilityState === "hidden") sound.markStale();
+  if (document.visibilityState === "visible") { sound.resumeIfNeeded(); resumeTurnTimer(); }
+  else if (document.visibilityState === "hidden") { sound.markStale(); pauseTurnTimer(); }
 });
-window.addEventListener("pagehide", () => sound.markStale());
+window.addEventListener("pagehide", () => { sound.markStale(); pauseTurnTimer(); });
 initShake();
 document.addEventListener("keydown", onKey);
 
 game = store.loadGame();
-if (game) showGame();
+if (game) { showGame(); resetTurnTimer(); }
 else showSetup();

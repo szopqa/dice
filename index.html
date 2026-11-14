@@ -31,6 +31,7 @@
       <h1 class="title title--small">Catan Dice</h1>
       <p class="turn" id="turn"></p>
       <p class="next" id="next-up"></p>
+      <p class="timer timer--idle" id="timer"></p>
       <div class="dice" id="dice">
         <div class="die" id="die-0" role="img" aria-label="Die"></div>
         <div class="die" id="die-1" role="img" aria-label="Die"></div>
@@ -51,6 +52,7 @@
           <button class="btn btn--small btn--alt" type="button" id="new-game">New game</button>
           <button class="btn btn--toggle" type="button" id="silent" aria-label="Sound" aria-pressed="true">🔊</button>
           <button class="btn btn--toggle" type="button" id="shake" aria-label="Shake to roll" aria-describedby="settings-hint" aria-pressed="false">🫨</button>
+          <button class="btn btn--toggle" type="button" id="timer-toggle" aria-label="Turn timer" aria-pressed="false">⏱️</button>
         </div>
         <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
         <label class="haptic-switch" id="haptic-label" aria-hidden="true"><input type="checkbox" switch tabindex="-1" aria-hidden="true"></label>
