@@ -30,6 +30,7 @@ export function createSound({
   let silent = !!isSilent;
   let ctx = null;
   let audioEl = null;
+  let audioPlaying = false;
 
   const getAC = () => ACDep || globalThis.AudioContext || globalThis.webkitAudioContext;
   const getAudio = () => AudioDep || globalThis.Audio;
@@ -144,7 +145,14 @@ export function createSound({
         if (A) {
           audioEl = new A();
           audioEl.src = silentWavDataUri();
-          swallow(audioEl.play());
+        }
+      }
+      if (audioEl && !audioPlaying) {
+        const p = audioEl.play();
+        if (p && typeof p.then === "function") {
+          p.then(() => { audioPlaying = true; }, () => {});
+        } else {
+          audioPlaying = true;
         }
       }
     } catch {

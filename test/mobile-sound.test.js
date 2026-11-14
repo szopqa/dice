@@ -90,20 +90,28 @@ describe("mobile-sound-haptics-shake", () => {
     assert.doesNotThrow(() => createSound({ AudioContext: AC, navigator: {} }).unlock());
   });
 
-  it("AC-4: creates one silent Audio element, plays it, swallows rejection", async () => {
+  it("AC-4: one silent Audio element; rejected play is retried, resolved play is not", async () => {
     const { AC } = makeAC();
     const els = [];
+    let reject = true;
     class A {
       constructor() { els.push(this); this.plays = 0; }
-      play() { this.plays++; return Promise.reject(new Error("blocked")); }
+      play() { this.plays++; return reject ? Promise.reject(new Error("blocked")) : Promise.resolve(); }
     }
     const s = createSound({ AudioContext: AC, Audio: A, navigator: {} });
     s.unlock();
+    await new Promise((r) => setImmediate(r));
     s.unlock();
     await new Promise((r) => setImmediate(r));
+    assert.equal(els[0].plays, 2);
+    reject = false;
+    s.unlock();
+    await new Promise((r) => setImmediate(r));
+    s.unlock();
+    s.unlock();
     assert.equal(els.length, 1);
     assert.equal(els[0].src, silentWavDataUri());
-    assert.equal(els[0].plays, 1);
+    assert.equal(els[0].plays, 3);
   });
 
   it("AC-5: silentWavDataUri is a small valid silent PCM WAV", () => {

@@ -28,6 +28,7 @@ const el = {
   hint: $("settings-hint"), hapticLabel: $("haptic-label"),
 };
 
+const sample = { x: 0, y: 0, z: 0, t: 0 };
 const sound = createSound({ isSilent: store.loadSilent() });
 
 // iOS 18+ fallback: clicking a hidden switch's label inside a gesture gives a system haptic.
@@ -38,6 +39,7 @@ const haptics = createHaptics({
     if (!inGesture) return;
     const prev = document.activeElement;
     el.hapticLabel.click();
+    if (document.activeElement === el.hapticLabel.querySelector("input")) document.activeElement.blur();
     if (prev && prev !== document.body && typeof prev.focus === "function") prev.focus({ preventScroll: true });
   },
 });
@@ -48,6 +50,7 @@ const motionEnv = () => ({
 const shakeDetector = createShakeDetector();
 let shakeOn = false;
 let shakeListening = false;
+let shakeRequesting = false; // a permission request is in flight
 let shakePending = false; // saved on, but iOS needs a gesture to re-request permission
 let hintTimer = 0;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -346,7 +349,8 @@ function toggleHaptics() {
 function onMotion(e) {
   const a = e.accelerationIncludingGravity;
   if (!a) return;
-  const hit = shakeDetector.push({ x: a.x, y: a.y, z: a.z, t: performance.now() });
+  sample.x = a.x; sample.y = a.y; sample.z = a.z; sample.t = performance.now();
+  const hit = shakeDetector.push(sample);
   if (hit && shouldRollOnShake({ enabled: shakeOn, screen: el.game.hidden ? "setup" : "game", animating })) {
     roll(true);
   }
@@ -375,10 +379,13 @@ function toggleShake() {
     showHint(el.shake.title);
     return;
   }
+  if (shakeRequesting) return;
   if (shakeOn) { setShake(false); showHint(""); return; }
+  shakeRequesting = true;
   const request = requestMotionPermission(motionEnv()); // must start inside the tap
   if (!sound.isSilent()) sound.unlock();
   request.then((result) => {
+    shakeRequesting = false;
     if (result === "granted") { setShake(true); showHint(""); }
     else { setShake(false); showHint(result === "denied" ? DENIED_HINT : el.shake.title); }
   });
@@ -391,7 +398,6 @@ function initShake() {
     el.shake.title = support === "insecure"
       ? "Shake to roll needs HTTPS"
       : "Shake to roll needs a motion sensor";
-    if (store.loadShake()) store.saveShake(false);
     return;
   }
   el.shake.title = "Shake to roll";
@@ -403,15 +409,19 @@ function initShake() {
   }
   // iOS: permission can only be requested from a user gesture.
   shakePending = true;
-  const types = ["pointerup", "touchend", "click", "keydown"];
-  const onGesture = () => {
-    types.forEach((t) => document.removeEventListener(t, onGesture, true));
-    if (!shakePending) return;
-    shakePending = false;
+  const types = ["touchend", "click", "keydown"];
+  const detach = () => types.forEach((t) => document.removeEventListener(t, onGesture, true));
+  const onGesture = (e) => {
+    if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+    if (!shakePending || shakeRequesting) { if (!shakePending) detach(); return; }
+    detach();
+    shakeRequesting = true;
     requestMotionPermission(motionEnv()).then((result) => {
-      if (!shakeOn) return;
-      if (result === "granted") listenMotion(true);
-      else { setShake(false); showHint(DENIED_HINT); }
+      shakeRequesting = false;
+      if (!shakeOn || !shakePending) return;
+      if (result === "granted") { shakePending = false; listenMotion(true); }
+      else if (result === "denied") { setShake(false); showHint(DENIED_HINT); }
+      else types.forEach((t) => document.addEventListener(t, onGesture, true)); // not a real deny: retry on next gesture
     });
   };
   types.forEach((t) => document.addEventListener(t, onGesture, true));
@@ -419,7 +429,7 @@ function initShake() {
 
 /* ---------- audio unlock ---------- */
 
-const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+const GESTURES = ["pointerup", "touchend", "click", "keydown"];
 function onFirstGesture() {
   // Listeners stay attached: iOS can re-suspend the context after backgrounding.
   if (!sound.isSilent() && !sound.isRunning()) sound.unlock();

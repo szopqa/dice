@@ -16,8 +16,8 @@ export function createShakeDetector({
     push(sample) {
       if (!sample || typeof sample !== "object") return false;
       const { x, y, z, t } = sample;
-      for (const v of [x, y, z, t]) {
-        if (typeof v !== "number" || !Number.isFinite(v)) return false;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(t)) {
+        return false;
       }
       if (t < lastT) return false;
       lastT = t;
@@ -67,10 +67,11 @@ export function requestMotionPermission(env = {}) {
   try {
     result = DeviceMotionEvent.requestPermission();
   } catch {
-    return Promise.resolve("denied");
+    return Promise.resolve("error");
   }
+  // "denied" = explicit user denial; "error" = request rejected (e.g. NotAllowedError, no gesture).
   return Promise.resolve(result).then(
     (r) => (r === "granted" ? "granted" : "denied"),
-    () => "denied",
+    () => "error",
   );
 }
