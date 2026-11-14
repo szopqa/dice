@@ -260,4 +260,52 @@ describe("mobile-sound-haptics-shake", () => {
     assert.doesNotThrow(() => all(createSound({ AudioContext: RejectAC })));
     await new Promise((r) => setImmediate(r));
   });
+
+  it("AC-31: markStale then unlock closes the old ctx, makes a new one and replays the clip", async () => {
+    const a = makeAC({ state: "running" });
+    a.AC.prototype.close = function () { this.closed = (this.closed || 0) + 1; this.state = "closed"; return Promise.resolve(); };
+    const els = [];
+    const nav = { audioSession: { type: "auto" } };
+    class A {
+      constructor() { els.push(this); this.plays = 0; }
+      play() { this.plays++; return Promise.resolve(); }
+    }
+    const s = createSound({ AudioContext: a.AC, Audio: A, navigator: nav });
+    s.unlock();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(s.needsUnlock(), false);
+    nav.audioSession.type = "auto";
+    s.markStale();
+    assert.equal(s.needsUnlock(), true);
+    s.unlock();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(a.log.ctxs.length, 2);
+    assert.equal(a.log.ctxs[0].closed, 1);
+    assert.equal(a.log.buffers.length, 2);
+    assert.equal(nav.audioSession.type, "playback");
+    assert.equal(els.length, 1);
+    assert.equal(els[0].plays, 2);
+    assert.equal(s.needsUnlock(), false);
+  });
+
+  it("AC-31: a throwing close() is swallowed", () => {
+    const a = makeAC({ state: "running" });
+    a.AC.prototype.close = () => { throw new Error("x"); };
+    const s = createSound({ AudioContext: a.AC, navigator: {} });
+    s.unlock();
+    s.markStale();
+    assert.doesNotThrow(() => s.unlock());
+    assert.equal(a.log.ctxs.length, 2);
+  });
+
+  it("AC-31: when silent, markStale + unlock creates nothing", () => {
+    const a = makeAC();
+    let audios = 0;
+    const s = createSound({ isSilent: true, AudioContext: a.AC, Audio: class { constructor() { audios++; } }, navigator: {} });
+    s.markStale();
+    s.unlock();
+    assert.equal(a.log.ctxs.length, 0);
+    assert.equal(audios, 0);
+    assert.equal(s.needsUnlock(), false);
+  });
 });

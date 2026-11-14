@@ -24,7 +24,7 @@ const el = {
   turn: $("turn"), nextUp: $("next-up"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
-  newGame: $("new-game"), silent: $("silent"), haptics: $("haptics"), shake: $("shake"),
+  newGame: $("new-game"), silent: $("silent"), shake: $("shake"),
   hint: $("settings-hint"), hapticLabel: $("haptic-label"),
 };
 
@@ -34,7 +34,7 @@ const sound = createSound({ isSilent: store.loadSilent() });
 // iOS 18+ fallback: clicking a hidden switch's label inside a gesture gives a system haptic.
 let inGesture = false;
 const haptics = createHaptics({
-  enabled: store.loadHaptics(),
+  enabled: true,
   switchTick: () => {
     if (!inGesture) return;
     const prev = document.activeElement;
@@ -150,7 +150,9 @@ function startGame(event) {
   names = game.players.slice();
   store.saveNames(names);
   store.saveGame(game);
-  showGame();
+  // Reload so the page keeps no typing undo history (iOS Shake to Undo); restore path shows the game.
+  if (document.activeElement && typeof document.activeElement.blur === "function") document.activeElement.blur();
+  location.reload();
 }
 
 /* ---------- game screen rendering ---------- */
@@ -161,9 +163,10 @@ function setDice(values) {
 
 function renderTurn() {
   const text = `${game.players[game.turn]}'s turn`;
+  const hadTurn = el.turn.textContent !== "";
   if (el.turn.textContent !== text) {
     el.turn.textContent = text;
-    if (!reducedMotion.matches) restart(el.turn, "turn--change");
+    if (!reducedMotion.matches && hadTurn) restart(el.turn, "turn--change");
   }
   el.nextUp.textContent = `Next: ${game.players[nextPlayerIndex(game.turn, game.players.length)]}`;
 }
@@ -199,7 +202,6 @@ function renderSilent() {
 
 function renderToggles() {
   renderSilent();
-  el.haptics.setAttribute("aria-pressed", String(haptics.isEnabled()));
   el.shake.setAttribute("aria-pressed", String(shakeOn));
 }
 
@@ -337,13 +339,6 @@ function toggleSilent() {
   renderSilent();
 }
 
-function toggleHaptics() {
-  showHint("");
-  haptics.setEnabled(!haptics.isEnabled());
-  store.saveHaptics(haptics.isEnabled());
-  renderToggles();
-}
-
 /* ---------- shake ---------- */
 
 function onMotion(e) {
@@ -469,12 +464,13 @@ el.prev.addEventListener("click", () => updateGame(shiftTurn(game, -1)));
 el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
 el.silent.addEventListener("click", toggleSilent);
-el.haptics.addEventListener("click", toggleHaptics);
 el.shake.addEventListener("click", toggleShake);
 GESTURES.forEach((t) => document.addEventListener(t, onFirstGesture, true));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") sound.resumeIfNeeded();
+  else if (document.visibilityState === "hidden") sound.markStale();
 });
+window.addEventListener("pagehide", () => sound.markStale());
 initShake();
 document.addEventListener("keydown", onKey);
 

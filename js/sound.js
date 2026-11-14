@@ -31,6 +31,7 @@ export function createSound({
   let ctx = null;
   let audioEl = null;
   let audioPlaying = false;
+  let stale = false;
 
   const getAC = () => ACDep || globalThis.AudioContext || globalThis.webkitAudioContext;
   const getAudio = () => AudioDep || globalThis.Audio;
@@ -120,6 +121,18 @@ export function createSound({
 
   function unlock() {
     if (silent) return;
+    if (stale) {
+      // iOS may leave the old context "running" but silent after lock/background: replace it.
+      stale = false;
+      const old = ctx;
+      ctx = null;
+      audioPlaying = false;
+      try {
+        if (old && typeof old.close === "function") swallow(old.close());
+      } catch {
+        // ignore
+      }
+    }
     try {
       const nav = getNav();
       if (nav && "audioSession" in nav && nav.audioSession) nav.audioSession.type = "playback";
@@ -173,7 +186,13 @@ export function createSound({
     }
   }
 
+  function markStale() {
+    stale = true;
+    audioPlaying = false;
+  }
+
   return {
+    markStale,
     setSilent(v) {
       silent = !!v;
     },
@@ -184,7 +203,7 @@ export function createSound({
     resumeIfNeeded,
     needsUnlock() {
       if (silent) return false;
-      if (!ctx || ctx.state !== "running") return true;
+      if (stale || !ctx || ctx.state !== "running") return true;
       return !!getAudio() && !audioPlaying;
     },
     isRunning() {

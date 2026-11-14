@@ -5,7 +5,6 @@ export const KEYS = {
   game: "catan-dice:game",
   silent: "catan-dice:silent",
   names: "catan-dice:names",
-  haptics: "catan-dice:haptics",
   shake: "catan-dice:shake",
 };
 
@@ -43,9 +42,6 @@ export const clearGame = () => remove(KEYS.game);
 
 export const loadSilent = () => get(KEYS.silent) === "1";
 export const saveSilent = (silent) => set(KEYS.silent, silent ? "1" : "0");
-
-export const loadHaptics = () => get(KEYS.haptics) !== "0";
-export const saveHaptics = (v) => set(KEYS.haptics, v ? "1" : "0");
 
 export const loadShake = () => get(KEYS.shake) === "1";
 export const saveShake = (v) => set(KEYS.shake, v ? "1" : "0");
