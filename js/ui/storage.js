@@ -6,6 +6,7 @@ export const KEYS = {
   silent: "catan-dice:silent",
   names: "catan-dice:names",
   shake: "catan-dice:shake",
+  timer: "catan-dice:timer",
 };
 
 function get(key) {
@@ -45,6 +46,9 @@ export const saveSilent = (silent) => set(KEYS.silent, silent ? "1" : "0");
 
 export const loadShake = () => get(KEYS.shake) === "1";
 export const saveShake = (v) => set(KEYS.shake, v ? "1" : "0");
+
+export const loadTimer = () => get(KEYS.timer) === "1";
+export const saveTimer = (v) => set(KEYS.timer, v ? "1" : "0");
 
 /** Returns a valid-looking array of saved names, or null. */
 export function loadNames() {
