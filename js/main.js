@@ -31,12 +31,13 @@ const el = {
 const sample = { x: 0, y: 0, z: 0, t: 0 };
 const sound = createSound({ isSilent: store.loadSilent() });
 
-// iOS 18+ fallback: clicking a hidden switch's label inside a gesture gives a system haptic.
-let inGesture = false;
+// iOS 18+ experiment: clicking a hidden switch's label gives a system haptic. Only tried for
+// rolls started by a tap/key (not shake), read when the dice land.
+let rollFromGesture = false;
 const haptics = createHaptics({
   enabled: true,
   switchTick: () => {
-    if (!inGesture) return;
+    if (!rollFromGesture) return;
     const prev = document.activeElement;
     el.hapticLabel.click();
     if (document.activeElement === el.hapticLabel.querySelector("input")) document.activeElement.blur();
@@ -272,6 +273,7 @@ function reveal(events) {
     restart(el.sum, "pop");
   }
   showEffects(events);
+  haptics.land(events.effect);
   animating = false;
   renderButtons();
 }
@@ -289,9 +291,7 @@ function rollWith(apply, viaShake = false) {
   el.comment.textContent = "";
   renderButtons();
   sound.playRattle();
-  inGesture = !viaShake; // the iOS switch tick only works inside a real tap
-  haptics.tick();
-  inGesture = false;
+  rollFromGesture = !viaShake;
   if (reducedMotion.matches) {
     reveal(events);
     playOutcome(events);
@@ -309,8 +309,8 @@ function rollWith(apply, viaShake = false) {
 }
 
 function playOutcome({ effect }) {
-  if (effect === "big") { sound.playBig(); haptics.big(); }
-  else if (effect === "shout") { sound.playShout(); haptics.shout(); }
+  if (effect === "big") { sound.playBig(); }
+  else if (effect === "shout") { sound.playShout(); }
 }
 
 const roll = (viaShake = false) => rollWith((g, d) => applyRoll(g, d), viaShake === true);

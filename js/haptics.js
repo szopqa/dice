@@ -40,6 +40,21 @@ export function createHaptics({
         }
       }
     },
+    land(effect) {
+      if (!on) return;
+      if (hasVibrate()) {
+        return vibrate(
+          effect === "big" ? HAPTIC_PATTERNS.big : effect === "shout" ? HAPTIC_PATTERNS.shout : HAPTIC_PATTERNS.tick,
+        );
+      }
+      if (typeof switchTick === "function") {
+        try {
+          switchTick();
+        } catch {
+          // ignore
+        }
+      }
+    },
     shout() {
       vibrate(HAPTIC_PATTERNS.shout);
     },

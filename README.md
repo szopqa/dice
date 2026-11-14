@@ -28,7 +28,7 @@ Pressing Start game reloads the page on purpose. On iOS, typing names leaves an 
 ### Sound, haptics and shake
 
 - **Sound**: unlocked on the first tap/key press (needed on phones), and re-created on the next tap after the page was hidden (phone locked or app backgrounded). On iPhone it plays on the media channel, so the ring/silent switch does not mute it.
-- **Haptics**: always on. A tick on roll and stronger patterns for shouts and 7s via the Vibration API (Android). iPhone has no Vibration API, so only a best-effort tick on the Roll/Re-roll tap (iOS 18+) is possible.
+- **Haptics**: always on. They fire when the dice land (not on press): a short tick, with stronger patterns for shouts and 7s, via the Vibration API (Android). iPhone has no Vibration API, so only an experimental tick on tapped rolls (iOS 18+) is attempted; there is none on shake rolls.
 - **Shake to roll**: off by default; shaking the phone rolls like the Roll button. It needs a motion sensor and **HTTPS** (or localhost), so it works on GitHub Pages. For testing on a phone over Tailscale, use `tailscale serve` to get an HTTPS URL. On iOS the toggle asks for motion permission; if denied, re-enable it in Safari settings.
 
 ## Test and lint

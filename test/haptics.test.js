@@ -75,4 +75,35 @@ describe("mobile-sound-haptics-shake", () => {
       });
     }
   });
+
+  test("AC-33: land vibrates with the pattern for each effect", () => {
+    const nav = stub();
+    const h = createHaptics({ navigator: nav });
+    for (const e of ["none", "comment", "shout", "big"]) h.land(e);
+    assert.deepEqual(nav.calls, [HAPTIC_PATTERNS.tick, HAPTIC_PATTERNS.tick, HAPTIC_PATTERNS.shout, HAPTIC_PATTERNS.big]);
+  });
+
+  test("AC-33: land calls switchTick once per call when vibrate is missing", () => {
+    for (const e of ["none", "comment", "shout", "big"]) {
+      let n = 0;
+      createHaptics({ navigator: {}, switchTick: () => n++ }).land(e);
+      assert.equal(n, 1);
+    }
+  });
+
+  test("AC-33: land does nothing when disabled", () => {
+    const nav = stub();
+    let n = 0;
+    const h = createHaptics({ enabled: false, navigator: nav, switchTick: () => n++ });
+    h.land("big");
+    createHaptics({ enabled: false, navigator: {}, switchTick: () => n++ }).land("big");
+    assert.deepEqual(nav.calls, []);
+    assert.equal(n, 0);
+  });
+
+  test("AC-33: land never throws when vibrate or switchTick throw", () => {
+    const boom = () => { throw new Error("x"); };
+    assert.doesNotThrow(() => createHaptics({ navigator: { vibrate: boom } }).land("big"));
+    assert.doesNotThrow(() => createHaptics({ navigator: {}, switchTick: boom }).land("none"));
+  });
 });
