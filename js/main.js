@@ -6,6 +6,8 @@ import {
 } from "./game.js";
 import { evaluateEvents } from "./events.js";
 import { createSound } from "./sound.js";
+import { createHaptics } from "./haptics.js";
+import { createShakeDetector, shouldRollOnShake, motionSupport, requestMotionPermission } from "./shake.js";
 import * as store from "./ui/storage.js";
 import { nextPlayerIndex } from "./ui/turn.js";
 import { drawFace, randomFace } from "./ui/dice-view.js";
@@ -22,10 +24,36 @@ const el = {
   turn: $("turn"), nextUp: $("next-up"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
   roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
-  newGame: $("new-game"), silent: $("silent"),
+  newGame: $("new-game"), silent: $("silent"), shake: $("shake"),
+  hint: $("settings-hint"), hapticLabel: $("haptic-label"),
 };
 
+const sample = { x: 0, y: 0, z: 0, t: 0 };
 const sound = createSound({ isSilent: store.loadSilent() });
+
+// iOS 18+ experiment: clicking a hidden switch's label gives a system haptic. Only tried for
+// rolls started by a tap/key (not shake), read when the dice land.
+let rollFromGesture = false;
+const haptics = createHaptics({
+  enabled: true,
+  switchTick: () => {
+    if (!rollFromGesture) return;
+    const prev = document.activeElement;
+    el.hapticLabel.click();
+    if (document.activeElement === el.hapticLabel.querySelector("input")) document.activeElement.blur();
+    if (prev && prev !== document.body && typeof prev.focus === "function") prev.focus({ preventScroll: true });
+  },
+});
+const motionEnv = () => ({
+  DeviceMotionEvent: globalThis.DeviceMotionEvent,
+  isSecureContext: globalThis.isSecureContext,
+});
+const shakeDetector = createShakeDetector();
+let shakeOn = false;
+let shakeListening = false;
+let shakeRequesting = false; // a permission request is in flight
+let shakePending = false; // saved on, but iOS needs a gesture to re-request permission
+let hintTimer = 0;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 let game = null;
@@ -123,7 +151,9 @@ function startGame(event) {
   names = game.players.slice();
   store.saveNames(names);
   store.saveGame(game);
-  showGame();
+  // Reload so the page keeps no typing undo history (iOS Shake to Undo); restore path shows the game.
+  if (document.activeElement && typeof document.activeElement.blur === "function") document.activeElement.blur();
+  location.reload();
 }
 
 /* ---------- game screen rendering ---------- */
@@ -134,9 +164,10 @@ function setDice(values) {
 
 function renderTurn() {
   const text = `${game.players[game.turn]}'s turn`;
+  const hadTurn = el.turn.textContent !== "";
   if (el.turn.textContent !== text) {
     el.turn.textContent = text;
-    if (!reducedMotion.matches) restart(el.turn, "turn--change");
+    if (!reducedMotion.matches && hadTurn) restart(el.turn, "turn--change");
   }
   el.nextUp.textContent = `Next: ${game.players[nextPlayerIndex(game.turn, game.players.length)]}`;
 }
@@ -165,9 +196,20 @@ function renderButtons() {
 }
 
 function renderSilent() {
-  const on = sound.isSilent();
+  const on = !sound.isSilent();
   el.silent.setAttribute("aria-pressed", String(on));
-  el.silent.textContent = on ? "🔇 Silent" : "🔊 Sound";
+  el.silent.textContent = on ? "🔊" : "🔇";
+}
+
+function renderToggles() {
+  renderSilent();
+  el.shake.setAttribute("aria-pressed", String(shakeOn));
+}
+
+function showHint(text, sticky = false) {
+  clearTimeout(hintTimer);
+  el.hint.textContent = text;
+  if (text && !sticky) hintTimer = setTimeout(() => { el.hint.textContent = ""; }, 4000);
 }
 
 /** Full, animation-free render (start, reload, undo, shift). */
@@ -177,7 +219,7 @@ function renderStatic() {
   renderTurn();
   renderLastRoll();
   renderButtons();
-  renderSilent();
+  renderToggles();
 }
 
 /* ---------- effects ---------- */
@@ -231,13 +273,14 @@ function reveal(events) {
     restart(el.sum, "pop");
   }
   showEffects(events);
+  haptics.land(events.effect);
   animating = false;
   renderButtons();
 }
 
 /* ---------- actions ---------- */
 
-function rollWith(apply) {
+function rollWith(apply, viaShake = false) {
   if (animating || !game) return;
   const dice = rollPair();
   game = apply(game, dice);
@@ -248,6 +291,7 @@ function rollWith(apply) {
   el.comment.textContent = "";
   renderButtons();
   sound.playRattle();
+  rollFromGesture = !viaShake;
   if (reducedMotion.matches) {
     reveal(events);
     playOutcome(events);
@@ -265,12 +309,12 @@ function rollWith(apply) {
 }
 
 function playOutcome({ effect }) {
-  if (effect === "big") sound.playBig();
-  else if (effect === "shout") sound.playShout();
+  if (effect === "big") { sound.playBig(); }
+  else if (effect === "shout") { sound.playShout(); }
 }
 
-const roll = () => rollWith((g, d) => applyRoll(g, d));
-const reroll = () => { if (game.rolls.length) rollWith((g, d) => rerollLast(g, d)); };
+const roll = (viaShake = false) => rollWith((g, d) => applyRoll(g, d), viaShake === true);
+const reroll = () => { if (game?.rolls.length) rollWith((g, d) => rerollLast(g, d)); };
 
 function updateGame(next) {
   if (animating) return;
@@ -288,9 +332,117 @@ function newGame() {
 }
 
 function toggleSilent() {
+  showHint("");
   sound.setSilent(!sound.isSilent());
   store.saveSilent(sound.isSilent());
+  if (!sound.isSilent()) sound.unlock();
   renderSilent();
+}
+
+/* ---------- shake ---------- */
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a) return;
+  sample.x = a.x; sample.y = a.y; sample.z = a.z; sample.t = performance.now();
+  const hit = shakeDetector.push(sample);
+  if (hit && shouldRollOnShake({ enabled: shakeOn, screen: el.game.hidden ? "setup" : "game", animating })) {
+    roll(true);
+  }
+}
+
+function listenMotion(on) {
+  if (on === shakeListening) return;
+  shakeListening = on;
+  shakeDetector.reset();
+  if (on) window.addEventListener("devicemotion", onMotion);
+  else window.removeEventListener("devicemotion", onMotion);
+}
+
+function setShake(on) {
+  shakeOn = on;
+  shakePending = false;
+  store.saveShake(on);
+  listenMotion(on);
+  renderToggles();
+}
+
+let shakeToken = 0;
+const DENIED_HINT = "Motion access denied. Re-enable it in Safari settings.";
+
+function toggleShake() {
+  if (el.shake.getAttribute("aria-disabled") === "true") {
+    showHint(el.shake.title);
+    return;
+  }
+  if (shakeOn) { // on or pending: turning off always works; late results are discarded
+    shakeToken++;
+    shakeRequesting = false;
+    setShake(false);
+    showHint("");
+    return;
+  }
+  if (shakeRequesting) return;
+  shakeRequesting = true;
+  const token = ++shakeToken;
+  const request = requestMotionPermission(motionEnv()); // must start inside the tap
+  if (!sound.isSilent()) sound.unlock();
+  request.then((result) => {
+    if (token !== shakeToken) return;
+    shakeRequesting = false;
+    if (result === "granted") { setShake(true); showHint(""); }
+    else {
+      setShake(false);
+      showHint(result === "denied" ? DENIED_HINT : "Couldn't request motion access \u2014 tap again.");
+    }
+  });
+}
+
+function initShake() {
+  const support = motionSupport(motionEnv());
+  if (support !== "ok") {
+    el.shake.setAttribute("aria-disabled", "true");
+    el.shake.title = support === "insecure"
+      ? "Shake to roll needs HTTPS"
+      : "Shake to roll needs a motion sensor";
+    return;
+  }
+  el.shake.title = "Shake to roll";
+  if (!store.loadShake()) return;
+  shakeOn = true;
+  if (typeof globalThis.DeviceMotionEvent.requestPermission !== "function") {
+    listenMotion(true);
+    return;
+  }
+  // iOS: permission can only be requested from a user gesture.
+  shakePending = true;
+  const types = ["touchend", "click", "keydown"];
+  const detach = () => types.forEach((t) => document.removeEventListener(t, onGesture, true));
+  const onGesture = (e) => {
+    if (e.target && typeof e.target.closest === "function" && e.target.closest("#shake")) return;
+    if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+    if (!shakePending || shakeRequesting) { if (!shakePending) detach(); return; }
+    detach();
+    shakeRequesting = true;
+    const token = ++shakeToken;
+    requestMotionPermission(motionEnv()).then((result) => {
+      if (token !== shakeToken) return;
+      shakeRequesting = false;
+      if (!shakeOn || !shakePending) return;
+      if (result === "granted") { shakePending = false; listenMotion(true); }
+      else if (result === "denied") { setShake(false); showHint(DENIED_HINT); }
+      else types.forEach((t) => document.addEventListener(t, onGesture, true)); // not a real deny: retry on next gesture
+    });
+  };
+  types.forEach((t) => document.addEventListener(t, onGesture, true));
+}
+
+/* ---------- audio unlock ---------- */
+
+const GESTURES = ["pointerup", "touchend", "click", "keydown"];
+function onFirstGesture() {
+  // Listeners stay attached: iOS can re-suspend the context after backgrounding.
+  if (sound.needsUnlock()) sound.unlock();
 }
 
 function onKey(event) {
@@ -305,13 +457,21 @@ function onKey(event) {
 
 el.add.addEventListener("click", addPlayer);
 el.form.addEventListener("submit", startGame);
-el.roll.addEventListener("click", roll);
+el.roll.addEventListener("click", () => roll());
 el.reroll.addEventListener("click", reroll);
 el.undo.addEventListener("click", () => updateGame(undoLast(game)));
 el.prev.addEventListener("click", () => updateGame(shiftTurn(game, -1)));
 el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
 el.silent.addEventListener("click", toggleSilent);
+el.shake.addEventListener("click", toggleShake);
+GESTURES.forEach((t) => document.addEventListener(t, onFirstGesture, true));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") sound.resumeIfNeeded();
+  else if (document.visibilityState === "hidden") sound.markStale();
+});
+window.addEventListener("pagehide", () => sound.markStale());
+initShake();
 document.addEventListener("keydown", onKey);
 
 game = store.loadGame();

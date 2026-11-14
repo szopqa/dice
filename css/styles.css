@@ -194,6 +194,11 @@ body {
 
 .controls { margin-top: auto; width: 100%; padding-bottom: 6px; }
 .controls .row { margin-top: 8px; }
+.row .btn--toggle { flex: 0 0 var(--tap); padding: 0; font-size: 1.3rem; letter-spacing: 0; }
+.row .btn--toggle[aria-pressed="true"] { background: var(--forest); }
+.btn--toggle[aria-disabled="true"] { opacity: 0.45; }
+.hint { min-height: 2.4em; margin: 4px 0 0; font-size: 0.7rem; line-height: 1.2; text-align: center; color: var(--muted); }
+.haptic-switch { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); opacity: 0; pointer-events: none; }
 
 /* ---------- banner, flash, shake ---------- */
 .banner {

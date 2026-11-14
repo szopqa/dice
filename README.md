@@ -11,6 +11,8 @@ js/dice.js          pure dice logic (rollPair)
 js/game.js          pure game state (players, turns, rolls, undo, serialize)
 js/events.js        declarative event rules + evaluator
 js/sound.js         synthesized Web Audio sounds, silent mode
+js/haptics.js       vibration patterns + iOS switch fallback
+js/shake.js         shake detector, motion support/permission
 js/main.js          UI wiring (screens, animation, persistence)
 js/ui/              UI helpers (localStorage wrapper, CSS-pip dice drawing)
 test/               node --test unit tests for the pure modules
@@ -19,7 +21,15 @@ specs/              feature specs
 
 ## Usage
 
-Enter 2-6 player names (reorder with the arrows), press Start game, then ROLL (or press the Space or Enter key to roll from the keyboard). Re-roll replaces the last roll, the triangles change whose turn it is, Undo removes the last roll, and Sound toggles silent mode. State is saved in localStorage (`catan-dice:game`, `catan-dice:silent`, `catan-dice:names`).
+Enter 2-6 player names (reorder with the arrows), press Start game, then ROLL (or press the Space or Enter key to roll from the keyboard). Re-roll replaces the last roll, the triangles change whose turn it is, Undo removes the last roll, and the two icon toggles next to New game control Sound (🔊/🔇) and Shake to roll (🫨). State is saved in localStorage (`catan-dice:game`, `catan-dice:silent`, the shake setting, `catan-dice:names`).
+
+Pressing Start game reloads the page on purpose. On iOS, typing names leaves an "Undo Typing" entry in Safari's undo history, so shaking the phone would open the Shake to Undo dialog instead of rolling. Web pages can't disable that, so the page reloads (the game is restored without animation) to clear the history.
+
+### Sound, haptics and shake
+
+- **Sound**: unlocked on the first tap/key press (needed on phones), and re-created on the next tap after the page was hidden (phone locked or app backgrounded). On iPhone it plays on the media channel, so the ring/silent switch does not mute it.
+- **Haptics**: always on. They fire when the dice land (not on press): a short tick, with stronger patterns for shouts and 7s, via the Vibration API (Android). iPhone has no Vibration API, so only an experimental tick on tapped rolls (iOS 18+) is attempted; there is none on shake rolls.
+- **Shake to roll**: off by default; shaking the phone rolls like the Roll button. It needs a motion sensor and **HTTPS** (or localhost), so it works on GitHub Pages. For testing on a phone over Tailscale, use `tailscale serve` to get an HTTPS URL. On iOS the toggle asks for motion permission; if denied, re-enable it in Safari settings.
 
 ## Test and lint
 
