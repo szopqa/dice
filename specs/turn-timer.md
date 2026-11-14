@@ -36,7 +36,7 @@ The state is an immutable plain object (see Technical notes). Every function tak
 - AC-9 (pure-testable): Given a stub `localStorage`, when `loadTimer()` is called, then it returns the saved duration in ms (or `0` for off). The key is still `catan-dice:timer`; `saveTimer(durationMs)` writes the selected duration in whole seconds (`"0"` for off, `"60"`, `"120"`, `"180"`). Loading rules:
   - absent, `"0"`, or an empty string → off;
   - a value that matches a step in the list (e.g. `"120"` → 120 000 ms) → that duration;
-  - the legacy toggle value `"1"` (old "on") → 60 000 ms (1 minute);
+  - the legacy toggle value `"1"` (old "on") → 60 000 ms (1 minute), as long as 60 s is a step in the list (otherwise off, like any other value not in the list);
   - anything else (non-numeric, negative, fractional, a number that is not in the list, e.g. `"abc"`, `"-5"`, `"90"`, `"2"`) → off.
 
   A throwing `localStorage` makes `loadTimer()` return off without throwing, and makes `saveTimer` a no-op. A save followed by a load round-trips for every step in the list.
@@ -54,29 +54,31 @@ The state is an immutable plain object (see Technical notes). Every function tak
 - AC-21 (pure-testable): Given any selected duration (1, 2 or 3 minutes, or any step in the list), when remaining is 10 000 ms or less, then the phase is `"warning"`; above 10 000 ms it is `"running"`. The pulse in AC-12 therefore always covers the final 10 s, and never starts earlier for longer durations. If a step is 10 s or shorter, the countdown starts in the warning phase (assumed, see open questions).
 
 ## Technical notes
-These notes were written for the original on/off toggle. Wherever they conflict with the ACs above (duration passed in place of `enabled`, `loadTimer`/`saveTimer` storing seconds, cycle button instead of `aria-pressed` toggle, `TIMER_STEPS`, a pure next-step helper), the ACs win, and the architect updates the ADR and these notes.
+See `specs/turn-timer.adr.md` for the decision record and the task plan. The duration cycle (AC-5, AC-9..AC-11, AC-15..AC-21) is described below.
 
 **Files**
-- `js/timer.js` (new, pure, no DOM, no clock reads). Exports:
-  - `TIMER_DEFAULTS = { durationMs: 60000, warnMs: 10000 }`
+- `js/timer.js` (pure, no DOM, no clock reads). Exports:
+  - `TIMER_DEFAULTS = { durationMs: 60000, warnMs: 10000 }` (the default timer for `createTimer()` and the warning window used for every duration)
+  - `TIMER_STEPS = [60000, 120000, 180000]` (frozen; durations in ms, each a positive whole number of seconds, in cycle order). Off is implicit: it always comes before the first entry and after the last one, and it is never listed.
   - `createTimer({ durationMs, warnMs } = TIMER_DEFAULTS)`
   - `startTurn(t, now)`, `stopTimer(t)`, `pauseTimer(t, now)`, `resumeTimer(t, now)`
   - `remainingMs(t, now)`, `timerPhase(t, now)`, `tickTimer(t, now)`
-  - `resetForTurn(t, { durationMs, rollCount }, now)`
+  - `resetForTurn(t, { durationMs, rollCount }, now)`: if `durationMs` is a finite number > 0 and `rollCount >= 1`, it returns a running timer whose `durationMs` is the given one (AC-5, AC-20); otherwise it returns `stopTimer(t)`. If `now` is non-finite, the start branch returns `t` unchanged, without adopting the new duration (AC-8).
+  - `nextStep(currentMs, steps = TIMER_STEPS)`: `0` → `steps[0]`; `steps[i]` → `steps[i + 1]`, or `0` after the last entry; any other value (including `null`, `NaN`, negative numbers, and values not in the list) → `0` (AC-17, AC-18). An empty list always gives `0`.
+  - `timerLabel(ms)`: returns `{ text, aria }` for the button. `0` or an invalid value gives `{ text: "⏱️ Off", aria: "Turn timer: off" }`. Whole minutes give `"⏱️ N min"` / `"Turn timer: N minute(s)"`, and other whole seconds give `"⏱️ N s"` / `"Turn timer: N second(s)"` (AC-19, AC-18).
   - `formatRemaining(ms)`, `nagText(name)`
-  - step list constant and next-step helper (AC-17, AC-18)
 
-  The state shape is `{ status: "idle" | "running" | "paused", durationMs, warnMs, startedAt: number | null, elapsedMs: number, nagged: boolean }`. Remaining is `durationMs − (elapsedMs + (status === "running" ? max(0, now − startedAt) : 0))`, clamped to `[0, durationMs]`. Pausing folds the running span into `elapsedMs`. `tickTimer` sets `nagged: true` when it returns `nag: true`.
-- `js/ui/storage.js` (modify): `KEYS.timer = "catan-dice:timer"`, `loadTimer`, `saveTimer` per AC-9.
+  The state shape is `{ status: "idle" | "running" | "paused", durationMs, warnMs, startedAt: number | null, elapsedMs: number, nagged: boolean }`. Remaining is `durationMs − (elapsedMs + (status === "running" ? max(0, now − startedAt) : 0))`, clamped to `[0, durationMs]`. Pausing folds the running span into `elapsedMs`. `tickTimer` sets `nagged: true` when it returns `nag: true`. `warnMs` stays 10 000 for every duration (AC-21).
+- `js/ui/storage.js` (modify): `KEYS.timer = "catan-dice:timer"` (unchanged). It imports `TIMER_STEPS` from `../timer.js`. `loadTimer(steps = TIMER_STEPS)` returns ms (`0` for off) and `saveTimer(durationMs)` writes whole seconds, both per AC-9. A strict digits-only parse means `"-5"`, `"1.5"`, `" 60"` and `"abc"` are off. The legacy `"1"` is read as 60 s and then validated against the list like any other value. Nothing is written on load: a legacy `"1"` is replaced by seconds on the next press.
 - `js/main.js` (modify):
-  - Hold `timer` state, plus a `setInterval` of about 250 ms that runs only while the timer is running. Each tick calls `tickTimer(timer, performance.now())`, updates the countdown text and phase class, and on `nag` calls the nag path.
+  - Hold `timer` state and `timerMs` (the selected duration, `0` for off, from `store.loadTimer()`), plus a `setInterval` of about 250 ms that runs only while the timer is running and has not nagged. Each tick calls `tickTimer(timer, performance.now())`, updates the countdown text and phase class, and on `nag` calls the nag path.
   - The nag path is `showBanner({ text: nagText(game.players[game.turn]) }, false)`, `sound.playShout()` (already a no-op when silent), and `haptics.shout()`. Do not use `haptics.land()`, because its iOS `switchTick` fallback is meant only for gesture rolls.
-  - In `rollWith`, call `stopTimer`. In `reveal`, call `resetForTurn`. `updateGame` (Undo, ◀/▶) calls `resetForTurn` with the new `game.rolls.length`. `newGame` calls `stopTimer`. On load, call `resetForTurn` with the loaded duration.
+  - In `rollWith`, call `stopTimer`. In `reveal`, call `resetForTurn`. `updateGame` (Undo, ◀/▶) calls `resetForTurn` with the new `game.rolls.length`. `newGame` calls `stopTimer`. On load, call `resetForTurn` with the loaded duration. Every `resetForTurn` call passes `{ durationMs: timerMs, rollCount: game.rolls.length }`. While the dice tumble, the reset keeps the timer stopped, so `reveal` starts it with whatever `timerMs` is selected at that moment (AC-20).
   - Extend the existing `visibilitychange`/`pagehide` handlers with `pauseTimer`/`resumeTimer`.
-  - The button handler advances to the next step, saves, updates label and `aria-label`, then calls `resetForTurn`.
-- `index.html` (modify): the `#timer-toggle` button after `#shake`, plus a countdown element (e.g. `<p id="timer" class="timer">`) in the turn area. The countdown is not `aria-live`, because per-second announcements would spam screen readers; the nag is announced through the existing `aria-live` banner.
-- `css/styles.css` (modify): the second controls row holds New game + 3 icon buttons. Give `.timer` a reserved `min-height` and use `visibility: hidden` when idle, so the layout does not jump. Reserve the button width for the longest label. Add `.timer--warning` (with a pulse keyframe, disabled under `prefers-reduced-motion`) and `.timer--expired`.
-- Tests: `test/timer.test.js` (AC-1 to AC-8, AC-17, AC-18, AC-21) and `test/turn-timer-storage.test.js` (AC-9), with cases wrapped in `describe("turn-timer", …)` and titles starting with the AC id, for example `it("AC-3: nags exactly once per expiry")`. Existing tests stay unchanged except where the ACs above changed.
+  - The button handler `cycleTimer` does `timerMs = nextStep(timerMs)`, `saveTimer(timerMs)`, renders the label and `aria-label` from `timerLabel(timerMs)`, then calls `resetForTurn`. The same label render runs on load (from `renderToggles`). The button has no `aria-pressed`.
+- `index.html` (modify): the `#timer-toggle` button after `#shake`, with class `btn--cycle` instead of `btn--toggle`, no `aria-pressed`, initial text `⏱️ Off` and `aria-label="Turn timer: off"`. A countdown element (`<p id="timer" class="timer">`) sits in the turn area. The countdown is not `aria-live`, because per-second announcements would spam screen readers; the nag is announced through the existing `aria-live` banner.
+- `css/styles.css` (modify): the second controls row holds New game, two `var(--tap)` (48 px) icon toggles, and the cycle button. `.btn--cycle` has a fixed flex basis, wide enough for the longest default label (`⏱️ 3 min`), a `min-height` of `var(--tap)`, and `white-space: nowrap`, so the width is the same for every step (AC-10). Give `.timer` a reserved `min-height` and use `visibility: hidden` when idle, so the layout does not jump. Add `.timer--warning` (with a pulse keyframe, disabled under `prefers-reduced-motion`) and `.timer--expired`.
+- Tests: `test/timer.test.js` (AC-1 to AC-8, AC-17, AC-18, AC-21, plus the pure parts of AC-19 via `timerLabel` and AC-20 via `resetForTurn`) and `test/turn-timer-storage.test.js` (AC-9, plus AC-18 for a custom list passed to `loadTimer`). Cases are wrapped in `describe("turn-timer", …)`, with titles starting with the AC id, for example `it("AC-3: nags exactly once per expiry")`. Existing tests stay unchanged except where the ACs above changed (the `enabled` → `durationMs` change in AC-5/AC-8, and the boolean → seconds change in AC-9).
 - `README.md`: mention the third button, its cycle, and the `catan-dice:timer` key (seconds) in Usage.
 
 **Decisions**
@@ -97,7 +99,7 @@ These notes were written for the original on/off toggle. Wherever they conflict 
 - Shake-triggered rolls reset the timer the same way as tapped rolls, because both go through `rollWith`/`reveal`.
 
 ## Open questions
-- NON-BLOCKING: Storage format of the selected duration. Assumed: the same key `catan-dice:timer` now holds whole seconds (`"0"`, `"60"`, `"120"`, `"180"`). The legacy `"1"` can never be a real step (1 s), so it unambiguously means old "on" and maps to 1 minute. A saved value that is not in the current step list loads as off, so maintainers removing a step safely turns off users who had it.
+- NON-BLOCKING: Storage format of the selected duration. Assumed: the same key `catan-dice:timer` now holds whole seconds (`"0"`, `"60"`, `"120"`, `"180"`). The legacy `"1"` can never be a real step (1 s), so it unambiguously means old "on" and maps to 1 minute (as long as 60 s is in the list). A saved value that is not in the current step list loads as off, so maintainers removing a step safely turns off users who had it.
 - NON-BLOCKING: Should the nag repeat while the player keeps stalling (e.g. every 30 s after 0)? Assumed: no, one nag per turn. A repeating shout would get annoying at a real table.
 - NON-BLOCKING: Is the 1/2/3 minute range right, given that the app's "turn" spans the previous player's build/trade phase plus the current roll? Assumed: yes, as requested; the list is a single constant.
 - NON-BLOCKING: Button label wording. Assumed: `⏱️ Off`, `⏱️ 1 min`, `⏱️ 2 min`, `⏱️ 3 min` visible, and `Turn timer: <setting>` as the accessible label. If it does not fit at 360 px, shorten the visible text (e.g. `1m`), not the 44 px target.
