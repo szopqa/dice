@@ -23,7 +23,7 @@ Storage keeps the key `catan-dice:timer` and stores whole seconds. `saveTimer(ms
 
 `main.js` holds `timer` and `timerMs` (the selected duration, `0` = off) plus one `setInterval(tick, 250)`. `syncTimer()` keeps the interval alive only while the timer is `running` and has not nagged. `main.js` feeds the timer `performance.now()`, and it maps lifecycle events to the pure transitions:
 - `rollWith` → `stopTurnTimer` (the timer is idle while the dice tumble)
-- `reveal`, `updateGame` (Undo, ◀/▶), `cycleTimer` and page load → `resetTurnTimer`, which passes `{ durationMs: timerMs, rollCount }` and pauses at once if the page is hidden. During a tumble it keeps the timer stopped, so `reveal` picks up whatever duration is selected by then (AC-20).
+- `reveal`, `updateGame` (◀/▶; Undo was removed by catan-dice Amendment 1), `cycleTimer` and page load → `resetTurnTimer`, which passes `{ durationMs: timerMs, rollCount }` and pauses at once if the page is hidden. During a tumble it keeps the timer stopped, so `reveal` picks up whatever duration is selected by then (AC-20).
 - `newGame` → `stopTurnTimer`
 - `visibilitychange` hidden and `pagehide` → `pauseTurnTimer`
 - `visibilitychange` visible and `pageshow` with `persisted` → `resumeTurnTimer`
@@ -68,7 +68,7 @@ The ⏱️ button becomes a cycle button (`.btn--cycle`, no `aria-pressed`). It 
 ```mermaid
 stateDiagram-v2
   [*] --> idle : createTimer()
-  idle --> running : resetForTurn(dur>0, rolls>=1) [reveal, Undo, prev/next, cycle press, load]
+  idle --> running : resetForTurn(dur>0, rolls>=1) [reveal, prev/next, cycle press, load]
   running --> running : resetForTurn(dur>0, rolls>=1) [restart from full dur, nagged=false]
   running --> paused : pauseTimer [hidden / pagehide]
   paused --> running : resumeTimer [visible / pageshow persisted]
