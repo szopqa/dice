@@ -53,18 +53,6 @@ export function applyRoll(game, dice) {
   };
 }
 
-export function rerollLast(game, dice) {
-  if (game.rolls.length === 0) return game;
-  const last = game.rolls[game.rolls.length - 1];
-  return { ...game, rolls: [...game.rolls.slice(0, -1), makeRoll(dice, last.player)] };
-}
-
-export function undoLast(game) {
-  if (game.rolls.length === 0) return game;
-  const last = game.rolls[game.rolls.length - 1];
-  return { ...game, rolls: game.rolls.slice(0, -1), turn: last.player };
-}
-
 export function shiftTurn(game, dir) {
   const n = game.players.length;
   return { ...game, turn: (((game.turn + dir) % n) + n) % n };

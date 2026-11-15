@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  validateNames, createGame, moveItem, applyRoll, rerollLast, undoLast,
+  validateNames, createGame, moveItem, applyRoll,
   shiftTurn, serialize, deserialize,
 } from "../js/game.js";
 
@@ -55,30 +55,6 @@ test("AC-5: applyRoll appends roll, advances turn with wrap, is immutable", () =
   const g3r = applyRoll(applyRoll(g1, [1, 1]), [2, 2]);
   assert.equal(g3r.turn, 0);
   assert.equal(g3r.rolls[2].player, 2);
-});
-
-test("AC-6: rerollLast replaces last roll keeping player and turn", () => {
-  const g = applyRoll(applyRoll(g3(), [1, 2]), [3, 4]);
-  const snap = structuredClone(g);
-  const r = rerollLast(g, [6, 6]);
-  assert.deepEqual(g, snap);
-  assert.equal(r.rolls.length, 2);
-  assert.deepEqual(r.rolls[1], { dice: [6, 6], sum: 12, player: 1 });
-  assert.equal(r.turn, g.turn);
-  const empty = g3();
-  assert.equal(rerollLast(empty, [1, 1]), empty);
-});
-
-test("AC-7: undoLast removes last roll and restores turn", () => {
-  const g = applyRoll(applyRoll(g3(), [1, 2]), [3, 4]);
-  const snap = structuredClone(g);
-  const u = undoLast(g);
-  assert.deepEqual(g, snap);
-  assert.equal(u.rolls.length, 1);
-  assert.equal(u.turn, 1);
-  assert.equal(undoLast(u).turn, 0);
-  const empty = g3();
-  assert.equal(undoLast(empty), empty);
 });
 
 test("AC-8: shiftTurn wraps both ways and keeps rolls", () => {
