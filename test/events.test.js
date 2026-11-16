@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateEvents, RULES } from "../js/events.js";
-import { rerollLast } from "../js/game.js";
 
 const PLAYERS = ["Anna", "Ben", "Cy"];
 const D = { 2: [1, 1], 3: [1, 2], 4: [1, 3], 5: [2, 3], 6: [2, 4], 7: [3, 4], 8: [3, 5], 9: [4, 5], 10: [4, 6], 12: [6, 6] };
@@ -130,16 +129,4 @@ test("AC-18: custom rules array drives evaluation", () => {
   assert.deepEqual(e.main, { id: "x", level: "comment", text: "hi" });
   assert.equal(e.secondary, null);
   assert.equal(e.effect, "comment");
-});
-
-test("AC-19: rerolled last roll does not count toward streaks", () => {
-  const before = g(8, 8);
-  assert.equal(evaluateEvents(before).main.text, "DOUBLE COMBO!");
-  const after = rerollLast(before, [2, 3]);
-  assert.equal(after.rolls.at(-1).sum, 5);
-  assert.ok(!fires(after, "combo"));
-  assert.ok(!fires(after, "combo-breaker"));
-  const e = evaluateEvents(after);
-  assert.notEqual(e.main?.id, "combo");
-  assert.notEqual(e.main?.id, "combo-breaker");
 });

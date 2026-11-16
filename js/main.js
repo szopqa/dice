@@ -1,7 +1,7 @@
 // UI wiring: screens, rendering, animation timing, persistence.
 import { rollPair } from "./dice.js";
 import {
-  validateNames, createGame, moveItem, applyRoll, rerollLast, undoLast, shiftTurn,
+  validateNames, createGame, moveItem, applyRoll, shiftTurn,
   MIN_PLAYERS, MAX_PLAYERS,
 } from "./game.js";
 import { evaluateEvents } from "./events.js";
@@ -28,7 +28,7 @@ const el = {
   names: $("names"), error: $("setup-error"), add: $("add-player"), form: $("setup-form"),
   turn: $("turn"), nextUp: $("next-up"), dice: [$("die-0"), $("die-1")], diceBox: $("dice"), sum: $("sum"),
   rolled: $("rolled"), comment: $("comment"), banner: $("banner"), flash: $("flash"),
-  roll: $("roll"), reroll: $("reroll"), undo: $("undo"), prev: $("prev"), next: $("next"),
+  roll: $("roll"), prev: $("prev"), next: $("next"),
   newGame: $("new-game"), silent: $("silent"), shake: $("shake"),
   timer: $("timer"), timerToggle: $("timer-toggle"),
   hint: $("settings-hint"), hapticLabel: $("haptic-label"),
@@ -197,10 +197,7 @@ function renderLastRoll() {
 }
 
 function renderButtons() {
-  const none = game.rolls.length === 0;
   el.roll.disabled = animating;
-  el.reroll.disabled = animating || none;
-  el.undo.disabled = animating || none;
   el.prev.disabled = el.next.disabled = el.newGame.disabled = animating;
 }
 
@@ -283,7 +280,7 @@ function showHint(text, sticky = false) {
   if (text && !sticky) hintTimer = setTimeout(() => { el.hint.textContent = ""; }, 4000);
 }
 
-/** Full, animation-free render (start, reload, undo, shift). */
+/** Full, animation-free render (start, reload, shift). */
 function renderStatic() {
   clearEffects();
   el.comment.textContent = "";
@@ -352,10 +349,10 @@ function reveal(events) {
 
 /* ---------- actions ---------- */
 
-function rollWith(apply, viaShake = false) {
+function roll(viaShake = false) {
   if (animating || !game) return;
   const dice = rollPair();
-  game = apply(game, dice);
+  game = applyRoll(game, dice);
   store.saveGame(game);
   const events = evaluateEvents(game);
   animating = true;
@@ -364,7 +361,7 @@ function rollWith(apply, viaShake = false) {
   el.comment.textContent = "";
   renderButtons();
   sound.playRattle();
-  rollFromGesture = !viaShake;
+  rollFromGesture = viaShake !== true;
   if (reducedMotion.matches) {
     reveal(events);
     playOutcome(events);
@@ -385,9 +382,6 @@ function playOutcome({ effect }) {
   if (effect === "big") { sound.playBig(); }
   else if (effect === "shout") { sound.playShout(); }
 }
-
-const roll = (viaShake = false) => rollWith((g, d) => applyRoll(g, d), viaShake === true);
-const reroll = () => { if (game?.rolls.length) rollWith((g, d) => rerollLast(g, d)); };
 
 function updateGame(next) {
   if (animating) return;
@@ -540,8 +534,6 @@ function onKey(event) {
 el.add.addEventListener("click", addPlayer);
 el.form.addEventListener("submit", startGame);
 el.roll.addEventListener("click", () => roll());
-el.reroll.addEventListener("click", reroll);
-el.undo.addEventListener("click", () => updateGame(undoLast(game)));
 el.prev.addEventListener("click", () => updateGame(shiftTurn(game, -1)));
 el.next.addEventListener("click", () => updateGame(shiftTurn(game, 1)));
 el.newGame.addEventListener("click", newGame);
