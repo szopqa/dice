@@ -307,6 +307,8 @@ function clearEffects() {
   el.banner.textContent = "";
   el.flash.className = "flash";
   document.body.classList.remove("shake");
+  // a lingering .die.land would override .tumbling .die (same specificity, later in CSS)
+  el.dice.forEach((d) => d.classList.remove("land"));
 }
 
 function showBanner(event, big) {
